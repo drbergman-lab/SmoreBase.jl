@@ -15,10 +15,9 @@ function _plot_profile_curve!(ax, pc::ProfileCurve)
         linestyle = :dash, color = :gray, linewidth = 1.5, label = "CI threshold")
     vlines!(ax, [mle_val];
         linestyle = :solid, color = :black, linewidth = 1.5, label = "MLE")
-    isnothing(pc.ci_lower) || vlines!(ax, [pc.ci_lower];
+    ci_bounds = filter(!isnothing, [pc.ci_lower, pc.ci_upper])
+    isempty(ci_bounds) || vlines!(ax, ci_bounds;
         linestyle = :dot, color = :red, linewidth = 1.5, label = "CI")
-    isnothing(pc.ci_upper) || vlines!(ax, [pc.ci_upper];
-        linestyle = :dot, color = :red, linewidth = 1.5, label = "")
 end
 
 # ── SMFitPlot ─────────────────────────────────────────────────────────────────
