@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = SMoReBase
+CurrentModule = SmoreBase
 ```
 
-# SMoReBase
+# SmoreBase
 
-Documentation for [SMoReBase](https://github.com/drbergman-lab/SMoReBase.jl).
+Documentation for [SmoreBase](https://github.com/drbergman-lab/SmoreBase.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [SMoReBase]
+Modules = [SmoreBase]
 ```

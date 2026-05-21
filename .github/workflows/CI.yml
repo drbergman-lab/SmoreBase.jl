@@ -67,6 +67,6 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
-          using SMoReBase
-          DocMeta.setdocmeta!(SMoReBase, :DocTestSetup, :(using SMoReBase); recursive=true)
-          doctest(SMoReBase)
+          using SmoreBase
+          DocMeta.setdocmeta!(SmoreBase, :DocTestSetup, :(using SmoreBase); recursive=true)
+          doctest(SmoreBase)
