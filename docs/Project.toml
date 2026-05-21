@@ -1,3 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-SMoReBase = "58e05929-dfd9-4064-9239-8dd6d82f606d"
+SmoreBase = "5c232813-7b28-4e6f-a96c-e027eca8fd3b"
+
+[compat]
+Documenter = "1.17.0"

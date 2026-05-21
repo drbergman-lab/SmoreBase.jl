@@ -1,14 +1,14 @@
-using SMoReBase
+using SmoreBase
 using Documenter
 
-DocMeta.setdocmeta!(SMoReBase, :DocTestSetup, :(using SMoReBase); recursive=true)
+DocMeta.setdocmeta!(SmoreBase, :DocTestSetup, :(using SmoreBase); recursive=true)
 
 makedocs(;
-    modules=[SMoReBase],
+    modules=[SmoreBase],
     authors="Daniel Bergman <danielrbergman@gmail.com> and contributors",
-    sitename="SMoReBase.jl",
+    sitename="SmoreBase.jl",
     format=Documenter.HTML(;
-        canonical="https://drbergman-lab.github.io/SMoReBase.jl",
+        canonical="https://drbergman-lab.github.io/SmoreBase.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -18,6 +18,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/drbergman-lab/SMoReBase.jl",
+    repo="github.com/drbergman-lab/SmoreBase.jl",
     devbranch="main",
 )
