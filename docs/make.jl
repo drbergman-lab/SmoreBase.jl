@@ -14,6 +14,7 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Custom CM Data Types" => "custom_data.md",
     ],
 )
 

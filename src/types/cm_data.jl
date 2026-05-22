@@ -6,6 +6,20 @@ Abstract base type for CM observation containers.
 abstract type AbstractCMData end
 
 """
+    AbstractCMDataSlice <: AbstractCMData
+
+Abstract base type for a single-param-set view into an `AbstractCMData` container.
+A slice has no param-set axis; `n_param_sets` is not defined on this type.
+
+Custom `AbstractCMData` subtypes must implement:
+```julia
+_sliceParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice
+```
+The returned object is passed to `_computeLoss` and to user-supplied `CustomLoss` functions.
+"""
+abstract type AbstractCMDataSlice <: AbstractCMData end
+
+"""
     CMData{T<:Real}
 
 Structured container for summary statistics from CM simulation runs used to train a surrogate model.
@@ -269,3 +283,126 @@ n_times(d::CMData)      = size(d.μ, 1)
 n_variables(d::CMData)  = size(d.μ, 2)
 n_conditions(d::CMData) = size(d.μ, 3)
 n_param_sets(d::CMData) = size(d.μ, 4)
+
+"""
+    _times(d::AbstractCMData) -> Union{Nothing, Vector}
+
+Return the time grid for `d`, or `nothing` if the time axis is absent.
+Default implementation returns `nothing`; `CMData` overrides with its `times` field.
+Custom subtypes may override to expose their own time grid.
+"""
+_times(::AbstractCMData)          = nothing
+_times(d::CMData)                 = d.times
+
+"""
+    _variableLabels(d::AbstractCMData) -> Union{Nothing, Vector{String}}
+
+Return the variable labels for `d`, or `nothing` if unlabelled.
+Default returns `nothing`; `CMData` overrides with its `variable_labels` field.
+"""
+_variableLabels(::AbstractCMData) = nothing
+_variableLabels(d::CMData)        = d.variable_labels
+
+"""
+    _conditionLabels(d::AbstractCMData) -> Union{Nothing, Vector{String}}
+
+Return the condition labels for `d`, or `nothing` if unlabelled.
+Default returns `nothing`; `CMData` overrides with its `condition_labels` field.
+"""
+_conditionLabels(::AbstractCMData) = nothing
+_conditionLabels(d::CMData)        = d.condition_labels
+
+"""
+    _paramSetLabels(d::AbstractCMData) -> Union{Nothing, Vector{String}}
+
+Return the param-set labels for `d`, or `nothing` if unlabelled.
+Default returns `nothing`; `CMData` overrides with its `param_set_labels` field.
+"""
+_paramSetLabels(::AbstractCMData) = nothing
+_paramSetLabels(d::CMData)        = d.param_set_labels
+
+# ── CMDataSlice ───────────────────────────────────────────────────────────────
+
+"""
+    CMDataSlice{T<:Real} <: AbstractCMDataSlice
+
+A zero-copy view into a single param-set of a `CMData` container. Fields `μ`, `σ`,
+and (optionally) `Σ` are `SubArray` views into the parent arrays — no data is copied.
+
+Created by `_sliceParamSet(data::CMData, pi)`.
+
+# Fields
+- `μ` — mean view `[n_times, n_variables, n_conditions]`
+- `σ` — noise view (same shape as `μ`)
+- `Σ` — optional full-covariance view `[n_variables, n_variables, n_times, n_conditions]`, or `nothing`
+- `times` — shared reference to the parent time grid, or `nothing`
+- `variable_labels`, `condition_labels` — shared references to parent label vectors, or `nothing`
+- `param_set_label` — label string for this param-set, or `nothing`
+"""
+struct CMDataSlice{T<:Real} <: AbstractCMDataSlice
+    μ::AbstractArray{T,3}                       # [n_times, n_variables, n_conditions]
+    σ::AbstractArray{T,3}
+    Σ::Union{Nothing,AbstractArray{T,4}}        # [n_variables, n_variables, n_times, n_conditions]
+    times::Union{Nothing,Vector{T}}
+    variable_labels::Union{Nothing,Vector{String}}
+    condition_labels::Union{Nothing,Vector{String}}
+    param_set_label::Union{Nothing,String}
+end
+
+"""
+    _sliceParamSet(data::CMData, pi::Int) -> CMDataSlice
+
+Return a zero-copy view of `data` restricted to param-set index `pi`.
+
+Custom `AbstractCMData` subtypes must implement their own method returning an
+`AbstractCMDataSlice`. The slice is passed to `_computeLoss` and to user-supplied
+`CustomLoss` functions as the `data` argument.
+"""
+function _sliceParamSet(data::CMData, pi::Int)
+    return CMDataSlice(
+        @view(data.μ[:, :, :, pi]),
+        @view(data.σ[:, :, :, pi]),
+        isnothing(data.Σ) ? nothing : @view(data.Σ[:, :, :, :, pi]),
+        _times(data),
+        _variableLabels(data),
+        _conditionLabels(data),
+        _paramSetLabels(data)[pi],
+    )
+end
+
+n_times(d::CMDataSlice)      = size(d.μ, 1)
+n_variables(d::CMDataSlice)  = size(d.μ, 2)
+n_conditions(d::CMDataSlice) = size(d.μ, 3)
+
+_times(d::CMDataSlice)           = d.times
+_variableLabels(d::CMDataSlice)  = d.variable_labels
+_conditionLabels(d::CMDataSlice) = d.condition_labels
+
+"""
+    _mean(d::AbstractCMDataSlice) -> AbstractArray
+
+Return the mean array for this slice, shape `[n_times, n_variables, n_conditions]`.
+
+Custom `AbstractCMDataSlice` subtypes must implement this method to use `GaussianNLL`.
+Field names may use any convention — Unicode is not required.
+"""
+_mean(d::CMDataSlice) = d.μ
+
+"""
+    _sd(d::AbstractCMDataSlice) -> AbstractArray
+
+Return the standard-deviation array for this slice, same shape as `_mean`.
+
+Custom `AbstractCMDataSlice` subtypes must implement this method to use `GaussianNLL`.
+"""
+_sd(d::CMDataSlice) = d.σ
+
+"""
+    _cov(d::AbstractCMDataSlice) -> Union{Nothing, AbstractArray}
+
+Return the full covariance array for this slice
+(`[n_variables, n_variables, n_times, n_conditions]`), or `nothing` for independent noise.
+
+Custom `AbstractCMDataSlice` subtypes must implement this method to use `GaussianNLL`.
+"""
+_cov(d::CMDataSlice) = d.Σ

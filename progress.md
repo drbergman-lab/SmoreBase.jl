@@ -158,6 +158,41 @@ All files written. No tests added (Makie is a large dependency, not suitable for
 
 ---
 
+## Session: CMDataSlice — data abstraction refactor (2026-05-22)
+
+### Goal
+Remove `param_set_idx` from the inner optimization loop. `_buildObjective` and `_computeLoss` had no business knowing where in the param-set dimension their data lived — they should receive only what they need.
+
+### Key Design Decisions
+
+**`AbstractCMDataSlice <: AbstractCMData` type hierarchy**
+A slice is still a kind of CM data container (same logical interface, reduced by one axis), so subtyping `AbstractCMData` makes sense. It also lets `_computeLoss` dispatch specifically on `AbstractCMDataSlice`, making it a compile-time error to accidentally pass unsliced data. `n_param_sets` is intentionally not defined on the slice type.
+
+**`CMDataSlice` uses `SubArray` views, not copies**
+`@view(data.μ[:, :, :, pi])` is a pointer + metadata — 8 bytes, not a data copy. Capturing a `CMDataSlice` in an optimization closure is zero-cost regardless of how large the parent `CMData` is.
+
+**Slice at the earliest caller that's already scoped to one param-set**
+- `_fitOneParamSet` already receives `param_set_idx` → slices there, passes `data_slice` to `_buildObjective`
+- `_uq` already receives `param_set_index` → slices once before the inner grid loop, passes `data_slice` to `_profileLL`
+- `_buildObjective` and `_profileLL` now take `AbstractCMDataSlice` directly; `param_set_idx` is gone from their signatures
+
+**`_uq` still carries `param_set_index` for `fitResult` access**
+`fitResult.parameters[param_set_index, :]` and `fitResult.errors[param_set_index]` are struct-of-arrays accesses that would require a `FitResultSlice` type to eliminate. That refactor is deferred; the `param_set_index` in `_uq` is setup code (runs once, not in the hot loop) and the discordance with the now-sliced `data` is acceptable.
+
+**Array-of-structs not pursued**
+Fully eliminating all param-set indexing would require restructuring `SMFitResult` and `ProfileLikelihoodResult` into arrays of per-param-set structs. In Julia, struct-of-arrays is the correct layout for numerical computation (cache efficiency, SIMD). The current matrix layout for result types is the right choice.
+
+**`CustomLoss.fn` signature updated**
+`fn(A_pred, data_slice::AbstractCMDataSlice, condition_idx)` — the `param_set_idx` argument is gone. Custom loss authors receive a pre-sliced view and index only by condition.
+
+**`docs/src/custom_data.md` added**
+How-to guide for users implementing custom `AbstractCMData` subtypes: explains `_sliceParamSet`, the extension point for `CustomLoss`, and includes a worked example with a custom slice type.
+
+### Status
+All 100 tests pass. `feature/cm-data-slice` branch ready for review.
+
+---
+
 ## Session: RecipesBase → Package Extension (2026-05-21)
 
 ### Goal

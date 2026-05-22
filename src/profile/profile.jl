@@ -70,9 +70,10 @@ function _uq(
         ))
     end
 
-    p_mle     = fitResult.parameters[param_set_index, :]
-    L_star    = -fitResult.errors[param_set_index]     # errors store the objective (= -LL)
-    threshold = L_star - 0.5 * quantile(Chisq(1), method.confidence_level)
+    p_mle      = fitResult.parameters[param_set_index, :]
+    L_star     = -fitResult.errors[param_set_index]     # errors store the objective (= -LL)
+    threshold  = L_star - 0.5 * quantile(Chisq(1), method.confidence_level)
+    data_slice = _sliceParamSet(data, param_set_index)
 
     profiles = Vector{ProfileCurve{Float64}}(undef, n_params)
 
@@ -93,13 +94,13 @@ function _uq(
 
         # Evaluate the MLE grid point (index n_left)
         lls[n_left], opt_params[n_left, :] =
-            _profileLL(sm, data, copy(p_mle), conditions, param_set_index, i, mle_val, lb, ub)
+            _profileLL(sm, data_slice, copy(p_mle), conditions, i, mle_val, lb, ub)
 
         # Left scan: outward from MLE toward lb
         p_warm = opt_params[n_left, :]
         for j in (n_left - 1):-1:1
             lls[j], opt_params[j, :] =
-                _profileLL(sm, data, p_warm, conditions, param_set_index, i, grid[j], lb, ub)
+                _profileLL(sm, data_slice, p_warm, conditions, i, grid[j], lb, ub)
             p_warm = opt_params[j, :]
         end
 
@@ -107,7 +108,7 @@ function _uq(
         p_warm = opt_params[n_left, :]
         for j in (n_left + 1):method.n_points
             lls[j], opt_params[j, :] =
-                _profileLL(sm, data, p_warm, conditions, param_set_index, i, grid[j], lb, ub)
+                _profileLL(sm, data_slice, p_warm, conditions, i, grid[j], lb, ub)
             p_warm = opt_params[j, :]
         end
 
@@ -133,10 +134,9 @@ end
 # Re-optimizes all remaining parameters within their bounds.
 function _profileLL(
     sm::AbstractSurrogateModel,
-    data::AbstractCMData,
+    data_slice::AbstractCMDataSlice,
     p_init::Vector{Float64},
     conditions::ConditionSpec,
-    param_set_index::Int,
     fixed_idx::Int,
     fixed_val::Float64,
     lb::Vector{Float64},
@@ -151,7 +151,7 @@ function _profileLL(
     if isempty(free_idx)
         p_full = copy(p_init)
         p_full[fixed_idx] = fixed_val
-        obj = _buildObjective(sm, data, conditions, GaussianNLL(), param_set_index)
+        obj = _buildObjective(sm, data_slice, conditions, GaussianNLL())
         return -obj(p_full, nothing), p_full
     end
 
@@ -159,7 +159,7 @@ function _profileLL(
     lb_free     = lb[free_idx]
     ub_free     = ub[free_idx]
 
-    full_obj = _buildObjective(sm, data, conditions, GaussianNLL(), param_set_index)
+    full_obj = _buildObjective(sm, data_slice, conditions, GaussianNLL())
 
     function reduced_obj(p_free, _hyper)
         T = eltype(p_free)

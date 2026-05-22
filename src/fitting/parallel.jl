@@ -10,7 +10,8 @@ function _fitOneParamSet(
     optimOptions::NamedTuple,
     param_set_idx::Int,
 )
-    obj = _buildObjective(sm, data, conditions, loss, param_set_idx)
+    data_slice = _sliceParamSet(data, param_set_idx)
+    obj = _buildObjective(sm, data_slice, conditions, loss)
     opt_fn  = OptimizationFunction(obj, Optimization.AutoForwardDiff())
     lb = _lowerBounds(prior)
     ub = _upperBounds(prior)

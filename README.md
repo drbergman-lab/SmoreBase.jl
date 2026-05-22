@@ -47,7 +47,8 @@ samples = sampleSMPredictions(sm, uq)
 
 ### Completed
 
-- [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_param_sets, n_conditions, n_times, n_outputs]`)
+- [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_times, n_variables, n_conditions, n_param_sets]`)
+- [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view; custom subtypes implement `_sliceParamSet`; documented in `docs/src/custom_data.md`
 - [x] `ConditionSpec`, `ParameterPrior` — supporting types (`ParameterPrior` holds `Distributions.jl` priors; box bounds via `Uniform`)
 - [x] `ODESurrogateModel`, `AnalyticalSurrogateModel` — surrogate model types with `_evaluate` dispatch
 - [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
