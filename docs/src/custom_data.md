@@ -7,7 +7,9 @@ SmoreBase ships with `CMData`, a general-purpose container for complex-model (CM
 Always implement:
 
 - `_sliceParamSet` — required for any custom `AbstractCMData` subtype
-- `_mean`, `_sd`, `_cov` — required if using `GaussianNLL`
+- `n_times`, `n_variables`, `n_conditions`, `n_param_sets` — required on your `AbstractCMData`
+  subtype; `fitSurrogate` calls these for input validation before fitting begins
+- `_mean`, `_sd`, `_cov` — required on your `AbstractCMDataSlice` subtype if using `GaussianNLL`
 
 Optionally implement:
 
@@ -95,6 +97,11 @@ function SmoreBase._sliceParamSet(data::ScaledCMData, pi::Int)
     )
 end
 
+SmoreBase.n_times(d::ScaledCMData)      = n_times(d.base)
+SmoreBase.n_variables(d::ScaledCMData)  = n_variables(d.base)
+SmoreBase.n_conditions(d::ScaledCMData) = n_conditions(d.base)
+SmoreBase.n_param_sets(d::ScaledCMData) = n_param_sets(d.base)
+
 # Custom loss that applies the per-condition scale
 scaled_loss = CustomLoss() do A_pred, slice::ScaledCMDataSlice, ki
     s      = slice.scale[ki]
@@ -116,12 +123,29 @@ result = fitSurrogate(sm, data, P0, prior; loss = scaled_loss)
 
 ## Accessor methods
 
-If you define a custom `AbstractCMDataSlice` subtype and need the standard accessors (`n_times`, `n_variables`, `n_conditions`) to work on it, implement:
+### On your `AbstractCMData` subtype (required)
+
+`fitSurrogate` calls four shape accessors on the data object before fitting. Implement all four,
+pointing each at the appropriate dimension of your underlying storage:
 
 ```julia
-SmoreBase.n_times(d::MySlice)      = ...
-SmoreBase.n_variables(d::MySlice)  = ...
-SmoreBase.n_conditions(d::MySlice) = ...
+SmoreBase.n_times(d::MyData)      = size(d.my_array, 1)
+SmoreBase.n_variables(d::MyData)  = size(d.my_array, 2)
+SmoreBase.n_conditions(d::MyData) = size(d.my_array, 3)
+SmoreBase.n_param_sets(d::MyData) = size(d.my_array, 4)   # or whichever dim holds param-sets
+```
+
+If your type uses a non-standard layout (e.g. param-sets in dim 5), adjust accordingly.
+
+### On your `AbstractCMDataSlice` subtype (optional)
+
+The slice accessors are not called by the fitting or UQ pipeline, but are useful if you
+want `n_times`, `n_variables`, `n_conditions` to work on slices for your own inspection code:
+
+```julia
+SmoreBase.n_times(d::MySlice)      = size(d.my_view, 1)
+SmoreBase.n_variables(d::MySlice)  = size(d.my_view, 2)
+SmoreBase.n_conditions(d::MySlice) = size(d.my_view, 3)
 ```
 
 `n_param_sets` is intentionally not defined on `AbstractCMDataSlice` — a slice always represents exactly one param-set.
