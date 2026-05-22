@@ -35,13 +35,13 @@ end
 # Unified SM parameter sampler. Returns [n_sm_params × n].
 # Two dispatch methods cover the two call sites in the pipeline:
 #   1. ProfileLikelihoodResult  — used by sampleSMPredictions (LL-weighted marginal CDFs)
-#   2. (lb, ub)                 — used by SMoReGloS (uniform LHS within an interpolated CI box)
+#   2. (lb, ub)                 — used by SmoreGSA (uniform LHS within an interpolated CI box)
 #
 # Both reduce to inverse-CDF sampling in [0,1]^n_sm_params; the difference is the CDF:
 # method 1 uses the empirical LL-weighted CDF, method 2 uses a uniform CDF on the box.
 # A future improvement to method 2 would interpolate the full profile LL curves across
 # the CM parameter grid and use the same weighted CDF as method 1 — see the comment in
-# SMoReGloS's _buildCMCallable for details.
+# SmoreGSA's _buildCMCallable for details.
 
 function _sampleSMParams(
     uq  :: ProfileLikelihoodResult,

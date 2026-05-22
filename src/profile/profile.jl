@@ -127,7 +127,7 @@ function _uq(
         )
     end
 
-    return ProfileLikelihoodResult{Float64}(profiles, fitResult, data.times)
+    return ProfileLikelihoodResult{Float64}(profiles, fitResult, _times(data))
 end
 
 # Compute the profile log-likelihood at a fixed value `v` for parameter `fixed_idx`.
