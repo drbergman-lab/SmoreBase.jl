@@ -1,6 +1,6 @@
 name = "SmoreBase"
 uuid = "5c232813-7b28-4e6f-a96c-e027eca8fd3b"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Daniel Bergman <danielrbergman@gmail.com> and contributors"]
 
 [deps]
