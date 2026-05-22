@@ -34,6 +34,7 @@ include("plots/fit_recipe.jl")
 
 # Exports — types
 export AbstractCMData, CMData
+export AbstractCMDataSlice, CMDataSlice
 export AbstractSurrogateModel, ODESurrogateModel, AnalyticalSurrogateModel
 export ConditionSpec, ParameterPrior
 export AbstractLoss, GaussianNLL, CustomLoss

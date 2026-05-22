@@ -206,22 +206,24 @@ end
     t    = collect(0.0:1.0:5.0)
     μ_true = _logistic(t, [0.5, 5.0], nothing)  # [6 × 1] matrix (SM output format)
     data = CMData(μ = vec(μ_true), σ = 0.1 .* ones(6), times = t)
+    slice = SmoreBase._sliceParamSet(data, 1)
 
     # Exact prediction → loss = 0.5 * sum(log(2π σ²))
-    L_exact = SmoreBase._computeLoss(GaussianNLL(), μ_true, data, 1, 1)
+    L_exact = SmoreBase._computeLoss(GaussianNLL(), μ_true, slice, 1)
     @test L_exact isa Float64
     @test L_exact ≈ 0.5 * sum(log.(2π .* (0.1)^2 .* ones(6, 1)))
 
     # Perturbed prediction → higher loss
-    L_perturbed = SmoreBase._computeLoss(GaussianNLL(), μ_true .+ 1.0, data, 1, 1)
+    L_perturbed = SmoreBase._computeLoss(GaussianNLL(), μ_true .+ 1.0, slice, 1)
     @test L_perturbed > L_exact
 end
 
 @testset "CustomLoss" begin
     t    = collect(0.0:1.0:5.0)
     data = CMData(μ = rand(6), σ = ones(6), times = t)
-    custom = CustomLoss((A, d, pi, ki) -> 42.0)
-    @test SmoreBase._computeLoss(custom, zeros(6, 1), data, 1, 1) == 42.0
+    slice = SmoreBase._sliceParamSet(data, 1)
+    custom = CustomLoss((A, d, ki) -> 42.0)
+    @test SmoreBase._computeLoss(custom, zeros(6, 1), slice, 1) == 42.0
 end
 
 # ── fitSurrogate ───────────────────────────────────────────────────────────────
@@ -304,6 +306,27 @@ end
     )
     result_ub = fitSurrogate(sm, data, P0, prior_unbounded)
     @test_warn r"unbounded" @test_throws ArgumentError SmoreBase._uq(sm, data, result_ub, ProfileLikelihood(n_points = 5))
+
+    # Single-parameter SM: covers the isempty(free_idx) branch in _profileLL,
+    # where fixing the only parameter leaves nothing to re-optimize.
+    @testset "single SM parameter" begin
+        _exp_decay = (t, p, _) -> reshape(exp.(-p[1] .* t), :, 1)
+        t1      = collect(0.0:1.0:10.0)
+        p1_true = [0.5]
+        μ1      = _exp_decay(t1, p1_true, nothing)
+        data1   = CMData(μ = vec(μ1), σ = 0.01 .* ones(length(t1)), times = t1)
+        sm1     = AnalyticalSurrogateModel(fn = _exp_decay)
+        prior1  = ParameterPrior([0.01], [2.0]; names = ["r"])
+        result1 = fitSurrogate(sm1, data1, reshape([0.4], 1, 1), prior1)
+
+        uq1 = SmoreBase._uq(sm1, data1, result1, ProfileLikelihood(n_points = 10))
+        @test uq1 isa ProfileLikelihoodResult
+        @test length(uq1.profiles) == 1
+        pc1 = uq1.profiles[1]
+        @test pc1.ci_lower !== nothing
+        @test pc1.ci_upper !== nothing
+        @test pc1.ci_lower < result1.parameters[1, 1] < pc1.ci_upper
+    end
 end
 
 # ── sampleSMPredictions ───────────────────────────────────────────────────────

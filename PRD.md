@@ -22,14 +22,16 @@
 
 **Behavioral specification:**
 - `abstract type AbstractCMData end` — base type for CM observation containers
+- `abstract type AbstractCMDataSlice <: AbstractCMData end` — base type for a single-param-set view; has no param-set axis (`n_param_sets` not defined). Custom `AbstractCMData` subtypes must implement `_sliceParamSet(data, pi) -> AbstractCMDataSlice`.
 - `CMData{T<:Real} <: AbstractCMData` — summary statistics (mean + uncertainty) from CM simulation runs:
-  - `μ` — mean observations; canonical shape `[n_param_sets, n_conditions, n_times, n_outputs]`; 2-D and 3-D inputs promoted automatically
+  - `μ` — mean observations; canonical shape `[n_times, n_variables, n_conditions, n_param_sets]`; lower-dimensional inputs promoted automatically via keyword constructor
   - `σ` — pointwise standard deviations (same shape as `μ`)
-  - `Σ` — optional full covariance `[n_outputs, n_outputs, n_times]`; `nothing` means independent observations; time is the trailing axis so each `[:, :, ti]` slice is contiguous in memory
-  - `times::Vector{T}` — shared time grid
-  - `variable_names::Vector{String}` — names of observable output variables
+  - `Σ` — optional full covariance `[n_variables, n_variables, n_times, n_conditions, n_param_sets]`; `nothing` means independent observations
+  - `times::Union{Nothing,Vector{T}}` — shared time grid
+  - `variable_labels::Vector{String}` — names of observable output variables
   - `condition_labels::Vector{String}` — labels for experimental conditions
   - `param_set_labels::Vector{String}` — labels for CM parameter vectors (one SM fit per param_set)
+- `CMDataSlice{T<:Real} <: AbstractCMDataSlice` — zero-copy view into a single param-set of a `CMData`; fields `μ`, `σ`, `Σ` are `SubArray` views; created by `_sliceParamSet(data::CMData, pi)`.
 - Note: `CMData` holds CM-generated output only. Real-world observational data enters the pipeline in `SmoreFit`, not here.
 - The keyword constructor accepts both Unicode and ASCII aliases:
   - `μ` or `mean` — mean observations
@@ -103,11 +105,11 @@
   - If `Σ` is `nothing`: `NLL = 0.5 * sum((A_pred - μ)² / σ²) + 0.5 * sum(log(2π * σ²))`
   - If `Σ` is supplied: uses the full multivariate Gaussian NLL
 - `CustomLoss{F} <: AbstractLoss` — user-supplied loss:
-  - `fn::F` — called as `fn(A_pred, data::CMData, cohort_idx, condition_idx) -> Float64`
-- Internal: `_computeLoss(loss, A_pred, data, cohort_idx, condition_idx) -> Float64`
+  - `fn::F` — called as `fn(A_pred, data_slice::AbstractCMDataSlice, condition_idx) -> Float64`
+- Internal: `_computeLoss(loss, A_pred, data_slice::AbstractCMDataSlice, condition_idx) -> Float64`; dispatches on `AbstractCMDataSlice` — passing unsliced `CMData` is a type error.
 
 **Acceptance criteria:**
-- `_computeLoss(GaussianNLL(), A_pred, data, 1, 1)` returns a scalar.
+- `_computeLoss(GaussianNLL(), A_pred, slice, 1)` returns a scalar, where `slice = _sliceParamSet(data, 1)`.
 - `CustomLoss(fn)` where `fn` returns a scalar integrates transparently with `fitSurrogate`.
 
 **Ruled out:**
