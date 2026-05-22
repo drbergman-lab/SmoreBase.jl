@@ -40,7 +40,7 @@ ProfileLikelihood(;
 ) = ProfileLikelihood(n_points, confidence_level, bounds)
 
 """
-    _uq(sm, data, fitResult, method; conditions, param_set_index) -> ProfileLikelihoodResult
+    _uq(problem, fitResult, method; param_set_index) -> ProfileLikelihoodResult
 
 Compute profile likelihood UQ for one param_set.
 
@@ -48,20 +48,18 @@ Not intended to be called by end users directly; a public wrapper will be added
 once the higher-level pipeline API is designed.
 """
 function _uq(
-    sm::AbstractSurrogateModel,
-    data::AbstractCMData,
+    problem::SMFitProblem,
     fitResult::SMFitResult,
     method::ProfileLikelihood;
-    conditions::ConditionSpec = ConditionSpec(),
-    param_set_index::Int      = 1,
+    param_set_index::Int = 1,
 )
-    n_params = length(fitResult.prior)
-    lb = !isnothing(method.bounds) ? _lowerBounds(method.bounds) : _lowerBounds(fitResult.prior)
-    ub = !isnothing(method.bounds) ? _upperBounds(method.bounds) : _upperBounds(fitResult.prior)
+    n_params = length(problem.prior)
+    lb = !isnothing(method.bounds) ? _lowerBounds(method.bounds) : _lowerBounds(problem.prior)
+    ub = !isnothing(method.bounds) ? _upperBounds(method.bounds) : _upperBounds(problem.prior)
 
     bad = findall(i -> isinf(lb[i]) || isinf(ub[i]), 1:n_params)
     if !isempty(bad)
-        names_str = join([fitResult.prior.names[i] for i in bad], ", ")
+        names_str = join([problem.prior.names[i] for i in bad], ", ")
         @warn "Profile sweep range is unbounded for parameter(s): $names_str. " *
               "Pass explicit `bounds::ParameterPrior` to `ProfileLikelihood` to set finite sweep limits."
         throw(ArgumentError(
@@ -73,7 +71,8 @@ function _uq(
     p_mle      = fitResult.parameters[param_set_index, :]
     L_star     = -fitResult.errors[param_set_index]     # errors store the objective (= -LL)
     threshold  = L_star - 0.5 * quantile(Chisq(1), method.confidence_level)
-    data_slice = _sliceParamSet(data, param_set_index)
+    data_slice = _sliceParamSet(problem.data, param_set_index)
+    conditions = _conditions(problem.data)
 
     profiles = Vector{ProfileCurve{Float64}}(undef, n_params)
 
@@ -94,13 +93,13 @@ function _uq(
 
         # Evaluate the MLE grid point (index n_left)
         lls[n_left], opt_params[n_left, :] =
-            _profileLL(sm, data_slice, copy(p_mle), conditions, i, mle_val, lb, ub)
+            _profileLL(problem.sm, data_slice, copy(p_mle), conditions, problem.loss, i, mle_val, lb, ub)
 
         # Left scan: outward from MLE toward lb
         p_warm = opt_params[n_left, :]
         for j in (n_left - 1):-1:1
             lls[j], opt_params[j, :] =
-                _profileLL(sm, data_slice, p_warm, conditions, i, grid[j], lb, ub)
+                _profileLL(problem.sm, data_slice, p_warm, conditions, problem.loss, i, grid[j], lb, ub)
             p_warm = opt_params[j, :]
         end
 
@@ -108,7 +107,7 @@ function _uq(
         p_warm = opt_params[n_left, :]
         for j in (n_left + 1):method.n_points
             lls[j], opt_params[j, :] =
-                _profileLL(sm, data_slice, p_warm, conditions, i, grid[j], lb, ub)
+                _profileLL(problem.sm, data_slice, p_warm, conditions, problem.loss, i, grid[j], lb, ub)
             p_warm = opt_params[j, :]
         end
 
@@ -116,7 +115,7 @@ function _uq(
 
         profiles[i] = ProfileCurve{Float64}(
             i,
-            fitResult.prior.names[i],
+            problem.prior.names[i],
             grid,
             lls,
             opt_params,
@@ -127,7 +126,7 @@ function _uq(
         )
     end
 
-    return ProfileLikelihoodResult{Float64}(profiles, fitResult, _times(data))
+    return ProfileLikelihoodResult{Float64}(profiles, fitResult, _times(problem.data))
 end
 
 # Compute the profile log-likelihood at a fixed value `v` for parameter `fixed_idx`.
@@ -137,6 +136,7 @@ function _profileLL(
     data_slice::AbstractCMDataSlice,
     p_init::Vector{Float64},
     conditions::ConditionSpec,
+    loss::AbstractLoss,
     fixed_idx::Int,
     fixed_val::Float64,
     lb::Vector{Float64},
@@ -151,7 +151,7 @@ function _profileLL(
     if isempty(free_idx)
         p_full = copy(p_init)
         p_full[fixed_idx] = fixed_val
-        obj = _buildObjective(sm, data_slice, conditions, GaussianNLL())
+        obj = _buildObjective(sm, data_slice, conditions, loss)
         return -obj(p_full, nothing), p_full
     end
 
@@ -159,7 +159,7 @@ function _profileLL(
     lb_free     = lb[free_idx]
     ub_free     = ub[free_idx]
 
-    full_obj = _buildObjective(sm, data_slice, conditions, GaussianNLL())
+    full_obj = _buildObjective(sm, data_slice, conditions, loss)
 
     function reduced_obj(p_free, _hyper)
         T = eltype(p_free)

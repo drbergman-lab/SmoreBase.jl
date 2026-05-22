@@ -75,7 +75,7 @@ function _sampleSMParams(
 end
 
 """
-    sampleSMPredictions(sm, uqResult; nSamples, conditions, rng) -> SampledPredictions
+    sampleSMPredictions(problem, uqResult; nSamples, rng) -> SampledPredictions
 
 Sample SM predictions by drawing parameter vectors from the distribution encoded in
 `uqResult` and evaluating the SM at each draw.
@@ -88,12 +88,11 @@ locations. This is a product-measure approximation — marginal LL shapes are re
 correlations between parameters are ignored.
 
 # Arguments
-- `sm` — the fitted surrogate model
+- `problem::SMFitProblem` — bundles the surrogate model and data (conditions derived from data)
 - `uqResult::ProfileLikelihoodResult` — UQ result from `_uq`
 
 # Keyword arguments
 - `nSamples::Int` — number of parameter samples (default: 100)
-- `conditions::ConditionSpec` — conditions at which to evaluate the SM (default: `ConditionSpec()`)
 - `rng` — random number generator (default: `Random.default_rng()`)
 
 # Returns
@@ -104,28 +103,27 @@ correlations between parameters are ignored.
 
 # Example
 ```julia
-samples = sampleSMPredictions(sm, uq_result; nSamples=200)
+samples = sampleSMPredictions(problem, uq_result; nSamples=200)
 ```
 """
 function sampleSMPredictions(
-    sm::AbstractSurrogateModel,
+    problem::SMFitProblem,
     uqResult::ProfileLikelihoodResult;
-    nSamples::Int             = 100,
-    conditions::ConditionSpec = ConditionSpec(),
-    rng::AbstractRNG          = Random.default_rng(),
+    nSamples::Int    = 100,
+    rng::AbstractRNG = Random.default_rng(),
 )
     params = _sampleSMParams(uqResult, nSamples, rng)
 
     # Evaluate SM at each sample (first condition only in v0)
     times      = uqResult.times
-    cond_label = conditions[1]
-    A_test     = _evaluate(sm, times, params[:, 1], cond_label)
+    cond_label = _conditions(problem.data)[1]
+    A_test     = _evaluate(problem.sm, times, params[:, 1], cond_label)
     n_t, n_out = size(A_test)
 
     preds = Array{Float64,3}(undef, n_t, n_out, nSamples)
     preds[:, :, 1] = A_test
     for s in 2:nSamples
-        preds[:, :, s] = _evaluate(sm, times, params[:, s], cond_label)
+        preds[:, :, s] = _evaluate(problem.sm, times, params[:, s], cond_label)
     end
 
     return SampledPredictions{Float64}(params, preds, times)

@@ -4,14 +4,32 @@ SmoreBase ships with `CMData`, a general-purpose container for complex-model (CM
 
 ## Required interface
 
+### On your `AbstractCMData` subtype
+
 Always implement:
 
-- `_sliceParamSet` — required for any custom `AbstractCMData` subtype
-- `n_times`, `n_variables`, `n_conditions`, `n_param_sets` — required on your `AbstractCMData`
-  subtype; `fitSurrogate` calls these for input validation before fitting begins
-- `_mean`, `_sd`, `_cov` — required on your `AbstractCMDataSlice` subtype if using `GaussianNLL`
+- `_sliceParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice`
+- `n_param_sets(data::MyType) -> Int` — `fitSurrogate` uses this to validate `P0`
 
-Optionally implement:
+Override the defaults when applicable (both default to single-condition / no-time-axis behaviour):
+
+- `_conditions(data::MyType) -> ConditionSpec` — default: `ConditionSpec()` (one `"default"` condition); override if your data has multiple experimental conditions
+- `_times(data::MyType) -> Union{Nothing,Vector}` — default: `nothing`; override if your data has a time axis
+
+**Derived for free — do not implement:**
+
+- `n_conditions` — automatically `length(_conditions(data))`
+- `n_times` — automatically `1` when `_times` returns `nothing`, or `length(_times(data))` otherwise
+- `n_variables` — not used by the pipeline; implement only if you need it for your own inspection code
+
+### On your `AbstractCMDataSlice` subtype
+
+Only needed if you define a custom slice type rather than returning `CMDataSlice` from `_sliceParamSet`:
+
+- `_times(slice::MySlice)` — default: `nothing`; override for time-series data (the SM is evaluated at these times)
+- `_mean`, `_sd`, `_cov` — required if using `GaussianNLL`
+
+### Optional
 
 - `CustomLoss` — for fully custom loss logic that doesn't use `GaussianNLL`
 
@@ -101,6 +119,7 @@ SmoreBase.n_times(d::ScaledCMData)      = n_times(d.base)
 SmoreBase.n_variables(d::ScaledCMData)  = n_variables(d.base)
 SmoreBase.n_conditions(d::ScaledCMData) = n_conditions(d.base)
 SmoreBase.n_param_sets(d::ScaledCMData) = n_param_sets(d.base)
+SmoreBase._conditions(d::ScaledCMData)  = SmoreBase._conditions(d.base)
 
 # Custom loss that applies the per-condition scale
 scaled_loss = CustomLoss() do A_pred, slice::ScaledCMDataSlice, ki
@@ -118,29 +137,32 @@ data = ScaledCMData(
     [1.0, 2.0, 0.5],
 )
 
-result = fitSurrogate(sm, data, P0, prior; loss = scaled_loss)
+problem = SMFitProblem(sm, data, prior; loss = scaled_loss)
+result  = fitSurrogate(problem, P0)
 ```
 
 ## Accessor methods
 
-### On your `AbstractCMData` subtype (required)
+### On your `AbstractCMData` subtype
 
-`fitSurrogate` calls four shape accessors on the data object before fitting. Implement all four,
-pointing each at the appropriate dimension of your underlying storage:
+Only `n_param_sets` must be implemented explicitly. Everything else is either derived or optional:
 
 ```julia
-SmoreBase.n_times(d::MyData)      = size(d.my_array, 1)
-SmoreBase.n_variables(d::MyData)  = size(d.my_array, 2)
-SmoreBase.n_conditions(d::MyData) = size(d.my_array, 3)
-SmoreBase.n_param_sets(d::MyData) = size(d.my_array, 4)   # or whichever dim holds param-sets
+SmoreBase.n_param_sets(d::MyData) = size(d.my_array, 5)   # whichever dim holds param-sets
 ```
 
-If your type uses a non-standard layout (e.g. param-sets in dim 5), adjust accordingly.
+`n_conditions` and `n_times` are derived automatically — do not implement them.
 
-### On your `AbstractCMDataSlice` subtype (optional)
+If you want `n_variables` for inspection code, add it yourself:
 
-The slice accessors are not called by the fitting or UQ pipeline, but are useful if you
-want `n_times`, `n_variables`, `n_conditions` to work on slices for your own inspection code:
+```julia
+SmoreBase.n_variables(d::MyData) = size(d.my_array, 2)
+```
+
+### On your `AbstractCMDataSlice` subtype
+
+None of the `n_*` accessors are called by the pipeline on slices. Implement them only if
+you want them available for your own inspection code:
 
 ```julia
 SmoreBase.n_times(d::MySlice)      = size(d.my_view, 1)

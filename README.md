@@ -27,16 +27,19 @@ data = CMData(
     times = t,
 )
 
+# Bundle model, data, prior, and loss into a single problem object
+prior   = ParameterPrior(lower=[0.0, 0.0], upper=[2.0, 10.0], names=["r", "K"])
+problem = SMFitProblem(sm, data, prior)   # loss defaults to GaussianNLL()
+
 # Fit SM parameters (one fit per param_set)
-prior = ParameterPrior(lower=[0.0, 0.0], upper=[2.0, 10.0], names=["r", "K"])
-P0    = [0.5 5.0]   # initial guess [n_param_sets × n_sm_params]
-fit   = fitSurrogate(sm, data, P0, prior)
+P0  = [0.5 5.0]   # initial guess [n_param_sets × n_sm_params]
+fit = fitSurrogate(problem, P0)
 
 # Quantify uncertainty via profile likelihood
-uq = _uq(sm, data, fit, ProfileLikelihood())
+uq = SmoreBase._uq(problem, fit, ProfileLikelihood())
 
 # Sample SM predictions within the UQ-defined parameter region
-samples = sampleSMPredictions(sm, uq)
+samples = sampleSMPredictions(problem, uq)
 ```
 
 ---
@@ -53,6 +56,7 @@ samples = sampleSMPredictions(sm, uq)
 - [x] `ODESurrogateModel`, `AnalyticalSurrogateModel` — surrogate model types with `_evaluate` dispatch
 - [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
 - [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types
+- [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `_uq`, and `sampleSMPredictions`
 - [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over param_sets)
 - [x] `SMFitResult` — result type for SM fitting
 - [x] UQ of SM parameters — `ProfileLikelihood` method; `_uq` internal dispatch; MLE-anchored grid with proportional split and outward warm-start

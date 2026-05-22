@@ -193,6 +193,50 @@ All 100 tests pass. `feature/cm-data-slice` branch ready for review.
 
 ---
 
+## Session: SMFitProblem — bundle sm, data, prior, loss (2026-05-22)
+
+### Goal
+Thread a single `SMFitProblem` object through `fitSurrogate`, `_uq`, and `sampleSMPredictions`
+instead of passing `sm`, `data`, `prior`, `loss`, and `conditions` as separate arguments.
+Primary motivation: `_uq` was hardcoding `GaussianNLL()`, silently ignoring any custom loss
+used during fitting.
+
+### Key Design Decisions
+
+**`loss` is an input, not a result — same category as `sm` and `data`**
+Initial instinct was to store `loss` in `SMFitResult` so `_uq` could read it automatically.
+Rejected: `sm` and `data` are already excluded from `SMFitResult` because they're inputs, and
+`loss` is in the same category. The consistent solution is to bundle all inputs into one struct.
+
+**`SMFitProblem` rather than adding a `loss` argument to `_uq`**
+Bundling all four problem-defining inputs eliminates call-site repetition and makes mismatch
+structurally impossible. Adding just `loss` to `_uq` would leave the mismatch risk (user passes
+different loss to fit vs. profile).
+
+**`prior` belongs in `SMFitProblem`**
+The prior defines the SM parameter space — part of the model definition, not a runtime detail.
+`SMFitResult` retains `prior` for result self-containment (useful when loading results from disk).
+
+**`conditions` derived from data via `_conditions(data)`**
+`conditions` was always validated against `data.condition_labels` in `fitSurrogate` — i.e., it
+was always redundant. `_conditions(d::CMData)` wraps `condition_labels` into a `ConditionSpec`.
+Default for custom `AbstractCMData`: `ConditionSpec()` (single "default" condition), matching
+the previous default keyword argument. Custom types with multiple conditions must override.
+
+**`_profileLL` keeps explicit `(sm, data_slice, conditions, loss, ...)` args**
+`_profileLL` is called in a tight loop from `_uq`. `_uq` extracts `conditions` and `loss` once
+before the loop and passes them down. Passing `problem` through the tight loop and re-extracting
+fields on every call would be a mild performance smell without benefit.
+
+**`sampleSMPredictions` v0 uses `_conditions(problem.data)[1]` (first condition only)**
+Multi-condition sampling remains deferred. Removing the explicit `conditions` kwarg is consistent
+— the data is the authoritative source.
+
+### Status
+All 25 ProfileLikelihood tests pass (9 new). Full suite green. `feature/sm-fit-problem` ready for review.
+
+---
+
 ## Session: RecipesBase → Package Extension (2026-05-21)
 
 ### Goal

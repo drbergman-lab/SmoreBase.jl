@@ -1,20 +1,17 @@
 # Fit the surrogate model for a single param_set.
 # Returns (fitted_params, error_val, converged, raw_result).
 function _fitOneParamSet(
-    sm::AbstractSurrogateModel,
-    data::AbstractCMData,
+    problem::SMFitProblem,
     p0_row::AbstractVector,
-    prior::ParameterPrior,
-    conditions::ConditionSpec,
-    loss::AbstractLoss,
     optimOptions::NamedTuple,
     param_set_idx::Int,
 )
-    data_slice = _sliceParamSet(data, param_set_idx)
-    obj = _buildObjective(sm, data_slice, conditions, loss)
-    opt_fn  = OptimizationFunction(obj, Optimization.AutoForwardDiff())
-    lb = _lowerBounds(prior)
-    ub = _upperBounds(prior)
+    data_slice = _sliceParamSet(problem.data, param_set_idx)
+    conditions = _conditions(problem.data)
+    obj    = _buildObjective(problem.sm, data_slice, conditions, problem.loss)
+    opt_fn = OptimizationFunction(obj, Optimization.AutoForwardDiff())
+    lb = _lowerBounds(problem.prior)
+    ub = _upperBounds(problem.prior)
     prob = OptimizationProblem(opt_fn, collect(Float64, p0_row), nothing; lb, ub)
     sol  = solve(prob, Fminbox(LBFGS()); optimOptions...)
     converged = !isnan(sol.objective) && !isinf(sol.objective)
@@ -23,12 +20,8 @@ end
 
 # Fit all param_sets using the provided map_fn (a resolved callable).
 function _fitAllParamSets(
-    sm::AbstractSurrogateModel,
-    data::AbstractCMData,
+    problem::SMFitProblem,
     P0::AbstractMatrix,
-    prior::ParameterPrior,
-    conditions::ConditionSpec,
-    loss::AbstractLoss,
     optimOptions::NamedTuple,
     map_fn,
 )
@@ -36,7 +29,7 @@ function _fitAllParamSets(
     n_params = size(P0, 2)
 
     raw = map_fn(1:n_ps) do i
-        _fitOneParamSet(sm, data, P0[i, :], prior, conditions, loss, optimOptions, i)
+        _fitOneParamSet(problem, P0[i, :], optimOptions, i)
     end
 
     params      = Matrix{Float64}(undef, n_ps, n_params)

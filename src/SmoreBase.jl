@@ -16,6 +16,7 @@ include("types/conditions.jl")
 include("types/parameter_prior.jl")
 include("types/loss.jl")
 include("types/results.jl")
+include("types/fit_problem.jl")
 
 # Fitting
 include("fitting/objective.jl")
@@ -39,7 +40,7 @@ export AbstractSurrogateModel, ODESurrogateModel, AnalyticalSurrogateModel
 export ConditionSpec, ParameterPrior
 export AbstractLoss, GaussianNLL, CustomLoss
 export AbstractUQMethod, ProfileLikelihood
-export SMFitResult, SMUQResult, ProfileLikelihoodResult, ProfileCurve, SampledPredictions
+export SMFitProblem, SMFitResult, SMUQResult, ProfileLikelihoodResult, ProfileCurve, SampledPredictions
 
 # Exports — CMData accessors
 export n_times, n_variables, n_conditions, n_param_sets

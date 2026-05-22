@@ -13,9 +13,25 @@ A slice has no param-set axis; `n_param_sets` is not defined on this type.
 
 Custom `AbstractCMData` subtypes must implement:
 ```julia
-_sliceParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice
+_sliceParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice  # always required
+n_param_sets(data::MyType) -> Int                             # required by fitSurrogate
 ```
-The returned object is passed to `_computeLoss` and to user-supplied `CustomLoss` functions.
+The following have working defaults but should be overridden when applicable:
+```julia
+_conditions(data::MyType) -> ConditionSpec   # default: ConditionSpec() (single condition)
+_times(data::MyType) -> Union{Nothing,Vector} # default: nothing (endpoint data)
+```
+`n_conditions` and `n_times` are derived automatically from `_conditions` and `_times`
+respectively — do not implement them unless you need a more efficient specialization.
+
+For `AbstractCMDataSlice` subtypes (needed only if not returning `CMDataSlice` from
+`_sliceParamSet`):
+```julia
+_times(slice::MySlice) -> Union{Nothing,Vector}  # default: nothing; override for time-series
+_mean(slice::MySlice) -> AbstractArray           # required if using GaussianNLL
+_sd(slice::MySlice)   -> AbstractArray           # required if using GaussianNLL
+_cov(slice::MySlice)  -> Union{Nothing,AbstractArray}  # required if using GaussianNLL
+```
 """
 abstract type AbstractCMDataSlice <: AbstractCMData end
 
@@ -284,6 +300,14 @@ n_variables(d::CMData)  = size(d.μ, 2)
 n_conditions(d::CMData) = size(d.μ, 3)
 n_param_sets(d::CMData) = size(d.μ, 4)
 
+# Defaults for AbstractCMData: derived from other required accessors.
+# Custom subtypes get these for free if they implement _times and _conditions.
+function n_times(d::AbstractCMData)
+    times = _times(d)
+    return isnothing(times) ? 1 : length(times)
+end
+n_conditions(d::AbstractCMData) = length(_conditions(d))
+
 """
     _times(d::AbstractCMData) -> Union{Nothing, Vector}
 
@@ -311,6 +335,17 @@ Default returns `nothing`; `CMData` overrides with its `condition_labels` field.
 """
 _conditionLabels(::AbstractCMData) = nothing
 _conditionLabels(d::CMData)        = d.condition_labels
+
+"""
+    _conditions(d::AbstractCMData) -> ConditionSpec
+
+Return the experimental conditions for `d` as a `ConditionSpec`.
+The default returns `ConditionSpec()` (single `"default"` condition).
+Custom `AbstractCMData` subtypes with multiple conditions must override this method.
+`CMData` overrides with its `condition_labels` field.
+"""
+_conditions(::AbstractCMData) = ConditionSpec()
+_conditions(d::CMData)        = ConditionSpec(d.condition_labels)
 
 """
     _paramSetLabels(d::AbstractCMData) -> Union{Nothing, Vector{String}}

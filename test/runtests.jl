@@ -226,6 +226,41 @@ end
     @test SmoreBase._computeLoss(custom, zeros(6, 1), slice, 1) == 42.0
 end
 
+# ── SMFitProblem ──────────────────────────────────────────────────────────────
+
+@testset "SMFitProblem" begin
+    sm    = AnalyticalSurrogateModel(fn = _logistic)
+    t     = collect(0.0:1.0:5.0)
+    data  = CMData(μ = rand(6), σ = 0.1 .* ones(6), times = t)
+    prior = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+
+    # Default loss is GaussianNLL
+    prob = SMFitProblem(sm, data, prior)
+    @test prob.sm   === sm
+    @test prob.data === data
+    @test prob.prior === prior
+    @test prob.loss isa GaussianNLL
+
+    # Custom loss stored correctly
+    custom = CustomLoss((A, d, ki) -> 0.0)
+    prob2  = SMFitProblem(sm, data, prior; loss = custom)
+    @test prob2.loss === custom
+
+    # _conditions derives ConditionSpec from CMData
+    cs = SmoreBase._conditions(data)
+    @test cs isa ConditionSpec
+    @test length(cs) == 1
+    @test cs[1] == "c1"
+
+    # multi-condition data (dim_order needed because variables=1 and param_sets=1 have same size)
+    data3 = CMData(μ = rand(6, 1, 3, 1), σ = 0.1 .* ones(6, 1, 3, 1), times = t,
+                   variables = 1, conditions = ["ctrl", "low", "high"], param_sets = 1,
+                   dim_order = [:times, :variables, :conditions, :param_sets])
+    cs3 = SmoreBase._conditions(data3)
+    @test length(cs3) == 3
+    @test cs3[2] == "low"
+end
+
 # ── fitSurrogate ───────────────────────────────────────────────────────────────
 
 @testset "fitSurrogate" begin
@@ -236,9 +271,10 @@ end
 
     sm    = AnalyticalSurrogateModel(fn = _logistic)
     prior = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+    prob  = SMFitProblem(sm, data, prior)
     P0    = [0.5 5.0]
 
-    result = fitSurrogate(sm, data, P0, prior)
+    result = fitSurrogate(prob, P0)
 
     @test result isa SMFitResult
     @test size(result.parameters) == (1, 2)
@@ -251,15 +287,15 @@ end
     @test result.parameters[1, 2] ≈ p_true[2] atol = 0.1
 
     # callable executor (map) should give identical result
-    result_exec = fitSurrogate(sm, data, P0, prior; executor = map)
+    result_exec = fitSurrogate(prob, P0; executor = map)
     @test result_exec.parameters ≈ result.parameters atol = 1e-4
 
     # symbol :serial should give identical result
-    result_serial = fitSurrogate(sm, data, P0, prior; executor = :serial)
+    result_serial = fitSurrogate(prob, P0; executor = :serial)
     @test result_serial.parameters ≈ result.parameters atol = 1e-4
 
     # Dimension validation
-    @test_throws ArgumentError fitSurrogate(sm, data, [0.5 5.0 1.0], prior)
+    @test_throws ArgumentError fitSurrogate(prob, [0.5 5.0 1.0])
 end
 
 # ── Profile likelihood ────────────────────────────────────────────────────────
@@ -273,11 +309,12 @@ end
 
     sm     = AnalyticalSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+    prob   = SMFitProblem(sm, data, prior)
     P0     = [0.5 5.0]
-    result = fitSurrogate(sm, data, P0, prior)
+    result = fitSurrogate(prob, P0)
 
     method = ProfileLikelihood(n_points = 20, confidence_level = 0.95)
-    uq     = SmoreBase._uq(sm, data, result, method)
+    uq     = SmoreBase._uq(prob, result, method)
 
     @test uq isa ProfileLikelihoodResult
     @test length(uq.profiles) == 2
@@ -299,13 +336,28 @@ end
         @test pc.ci_lower < fitted_val < pc.ci_upper
     end
 
+    # CustomLoss path: profile LL at MLE grid point still matches reference_ll
+    @testset "CustomLoss consistency" begin
+        custom_loss = CustomLoss((A, d, ki) -> SmoreBase._computeLoss(GaussianNLL(), A, d, ki))
+        prob_c  = SMFitProblem(sm, data, prior; loss = custom_loss)
+        result_c = fitSurrogate(prob_c, P0)
+        uq_c     = SmoreBase._uq(prob_c, result_c, ProfileLikelihood(n_points = 20))
+        for pc in uq_c.profiles
+            mle_val = result_c.parameters[1, pc.parameter_index]
+            mle_idx = findfirst(≈(mle_val; atol = 1e-10), pc.profile_values)
+            @test mle_idx !== nothing
+            @test pc.reference_ll - pc.log_likelihoods[mle_idx] < 1e-4
+        end
+    end
+
     # Unbounded prior → warning + ArgumentError
     prior_unbounded = ParameterPrior(
         [truncated(Normal(0.6, 1.0), 0.0, Inf), Uniform(0.5, 10.0)],
         ["r", "K"],
     )
-    result_ub = fitSurrogate(sm, data, P0, prior_unbounded)
-    @test_warn r"unbounded" @test_throws ArgumentError SmoreBase._uq(sm, data, result_ub, ProfileLikelihood(n_points = 5))
+    prob_ub   = SMFitProblem(sm, data, prior_unbounded)
+    result_ub = fitSurrogate(prob_ub, P0)
+    @test_warn r"unbounded" @test_throws ArgumentError SmoreBase._uq(prob_ub, result_ub, ProfileLikelihood(n_points = 5))
 
     # Single-parameter SM: covers the isempty(free_idx) branch in _profileLL,
     # where fixing the only parameter leaves nothing to re-optimize.
@@ -317,9 +369,10 @@ end
         data1   = CMData(μ = vec(μ1), σ = 0.01 .* ones(length(t1)), times = t1)
         sm1     = AnalyticalSurrogateModel(fn = _exp_decay)
         prior1  = ParameterPrior([0.01], [2.0]; names = ["r"])
-        result1 = fitSurrogate(sm1, data1, reshape([0.4], 1, 1), prior1)
+        prob1   = SMFitProblem(sm1, data1, prior1)
+        result1 = fitSurrogate(prob1, reshape([0.4], 1, 1))
 
-        uq1 = SmoreBase._uq(sm1, data1, result1, ProfileLikelihood(n_points = 10))
+        uq1 = SmoreBase._uq(prob1, result1, ProfileLikelihood(n_points = 10))
         @test uq1 isa ProfileLikelihoodResult
         @test length(uq1.profiles) == 1
         pc1 = uq1.profiles[1]
@@ -339,11 +392,12 @@ end
 
     sm     = AnalyticalSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+    prob   = SMFitProblem(sm, data, prior)
     P0     = [0.5 5.0]
-    result = fitSurrogate(sm, data, P0, prior)
-    uq     = SmoreBase._uq(sm, data, result, ProfileLikelihood(n_points = 20))
+    result = fitSurrogate(prob, P0)
+    uq     = SmoreBase._uq(prob, result, ProfileLikelihood(n_points = 20))
 
-    samples = sampleSMPredictions(sm, uq; nSamples = 50)
+    samples = sampleSMPredictions(prob, uq; nSamples = 50)
 
     @test samples isa SampledPredictions
     @test size(samples.parameters)  == (2, 50)
@@ -367,7 +421,8 @@ end
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
     sm     = AnalyticalSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
-    result = fitSurrogate(sm, data, [0.5 5.0], prior)
+    prob   = SMFitProblem(sm, data, prior)
+    result = fitSurrogate(prob, [0.5 5.0])
 
     # SMFitResult: one subplot per parameter × one series per convergence state
     rds = RecipesBase.apply_recipe(Dict{Symbol,Any}(), result)
@@ -388,8 +443,9 @@ end
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
     sm     = AnalyticalSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
-    result = fitSurrogate(sm, data, [0.5 5.0], prior)
-    uq     = SmoreBase._uq(sm, data, result, ProfileLikelihood(n_points = 20))
+    prob   = SMFitProblem(sm, data, prior)
+    result = fitSurrogate(prob, [0.5 5.0])
+    uq     = SmoreBase._uq(prob, result, ProfileLikelihood(n_points = 20))
 
     # ProfileLikelihoodResult: delegates to ProfileCurve recipe → 2 RecipeData (one per parameter)
     rds = RecipesBase.apply_recipe(Dict{Symbol,Any}(), uq)
@@ -413,9 +469,10 @@ end
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
     sm     = AnalyticalSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
-    result = fitSurrogate(sm, data, [0.5 5.0], prior)
-    uq     = SmoreBase._uq(sm, data, result, ProfileLikelihood(n_points = 20))
-    samples = sampleSMPredictions(sm, uq; nSamples = 30)
+    prob   = SMFitProblem(sm, data, prior)
+    result = fitSurrogate(prob, [0.5 5.0])
+    uq     = SmoreBase._uq(prob, result, ProfileLikelihood(n_points = 20))
+    samples = sampleSMPredictions(prob, uq; nSamples = 30)
 
     # 1 output variable → 1 ribbon series
     rds = RecipesBase.apply_recipe(Dict{Symbol,Any}(), samples)

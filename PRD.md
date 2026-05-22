@@ -117,6 +117,28 @@
 
 ---
 
+### Feature: SMFitProblem
+
+**One-line description:** Bundle the surrogate model, data, prior, and loss into a single object passed across the pipeline.
+
+**Priority:** Must-have
+
+**Behavioral specification:**
+- `SMFitProblem` — struct with fields `sm::AbstractSurrogateModel`, `data::AbstractCMData`, `prior::ParameterPrior`, `loss::AbstractLoss`
+  - Keyword constructor: `SMFitProblem(sm, data, prior; loss = GaussianNLL())`
+- `_conditions(data::AbstractCMData) -> ConditionSpec` — derive experimental conditions from data
+  - Default implementation: `ConditionSpec()` (single `"default"` condition)
+  - `CMData` overrides with its `condition_labels` field
+  - Custom `AbstractCMData` subtypes with multiple conditions must override this method
+- `SMFitProblem` is passed to `fitSurrogate`, `_uq`, and `sampleSMPredictions` instead of threading `sm`, `data`, `prior`, `loss`, and `conditions` through each call
+
+**Acceptance criteria:**
+- `SMFitProblem(sm, data, prior)` stores `GaussianNLL()` as default loss.
+- `SMFitProblem(sm, data, prior; loss = CustomLoss(fn))` stores the custom loss.
+- `_conditions(data::CMData)` returns a `ConditionSpec` matching `data.condition_labels`.
+
+---
+
 ### Feature: Surrogate Model Fitting
 
 **One-line description:** Fit SM parameters to CM summary statistics for each param_set.
@@ -124,28 +146,23 @@
 **Priority:** Must-have
 
 **Behavioral specification:**
-- `fitSurrogate(sm, data, P0, prior; conditions, loss, parallel, optimOptions) -> SMFitResult`
-  - `sm::AbstractSurrogateModel`
-  - `data::AbstractCMData`
+- `fitSurrogate(problem::SMFitProblem, P0; executor, optimOptions) -> SMFitResult`
+  - `problem::SMFitProblem` — bundles sm, data, prior, and loss; conditions derived from `problem.data`
   - `P0::AbstractMatrix` — initial parameter guesses `[n_param_sets × n_sm_params]`
-  - `prior::ParameterPrior`
-  - `conditions::ConditionSpec = ConditionSpec()`
-  - `loss::AbstractLoss = GaussianNLL()`
-  - `parallel::Bool = false` — if true, fits param_sets in parallel using `Threads.@threads`
+  - `executor` — `:serial` (default), `:threads`, `:distributed`, or any callable
   - `optimOptions::NamedTuple = (;)` — forwarded to `Optimization.jl` `solve()`
 - Implementation: `Fminbox(LBFGS())` via `OptimizationOptimJL` + `ForwardDiff`; one optimizer call per param_set
 - `SMFitResult{T<:Real}`:
   - `parameters::Matrix{T}` — `[n_param_sets × n_sm_params]`
   - `errors::Vector{T}` — objective value per param_set
   - `initial_parameters::Matrix{T}`
-  - `lower_bounds::Vector{T}`, `upper_bounds::Vector{T}`
+  - `prior::ParameterPrior` — carries bounds and parameter names
   - `converged::BitVector`
   - `optim_results::Vector{Any}`
-  - `parameter_names::Vector{String}`
 
 **Acceptance criteria:**
 - Returns an `SMFitResult` with `parameters` in `[lb, ub]` for each param_set.
-- With `parallel=true`, results are identical to `parallel=false` (modulo floating point).
+- With `executor=:threads`, results are identical to `:serial` (modulo floating point).
 - If a param_set fails to converge, `converged[i] = false` and `parameters[i, :]` contains the best point found.
 
 ---
@@ -162,7 +179,7 @@
   - `n_points::Int = 50` — number of grid points per parameter profile
   - `confidence_level::Float64 = 0.95`
   - `bounds::Union{Nothing, ParameterPrior} = nothing` — profile range; defaults to `SMFitResult` bounds
-- Internal dispatch: `_uq(sm, data, fitResult, method::AbstractUQMethod; conditions, cohort_index) -> ProfileLikelihoodResult`
+- Internal dispatch: `_uq(problem::SMFitProblem, fitResult, method::AbstractUQMethod; param_set_index) -> ProfileLikelihoodResult`
 
 **Profile likelihood method:**
 - For each SM parameter `θ_i`: sweep a grid of `n_points` values anchored at the MLE, fix `θ_i`, re-optimize all other parameters
@@ -200,9 +217,9 @@
 **Priority:** Should-have
 
 **Behavioral specification:**
-- `sampleSMPredictions(sm, uqResult; nSamples, conditions, rng) -> SampledPredictions`
+- `sampleSMPredictions(problem::SMFitProblem, uqResult; nSamples, rng) -> SampledPredictions`
   - Samples SM parameters uniformly within the profile-likelihood CI region using LHS (`QuasiMonteCarlo.jl`)
-  - Evaluates the SM at each sampled parameter vector
+  - Evaluates the SM at each sampled parameter vector; conditions derived from `problem.data`
 - `SampledPredictions`:
   - Stores parameter samples, prediction trajectories, and `times` (for standalone plotting)
 - This is Monte Carlo propagation of SM parameter uncertainty to output uncertainty — **not** a sensitivity analysis method.
