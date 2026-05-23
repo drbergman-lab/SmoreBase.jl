@@ -482,3 +482,96 @@ end
     sp_notimes = SampledPredictions(samples.parameters, samples.predictions, nothing)
     @test_throws ErrorException RecipesBase.apply_recipe(Dict{Symbol,Any}(), sp_notimes)
 end
+
+# ── CM parameter sample layout ─────────────────────────────────────────────────
+
+@testset "CMSample" begin
+    # GridCMSample: valid 2×2 Cartesian product
+    g = GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])
+    @test g isa GridCMSample
+    @test g.axes[1] == [1.0, 2.0]
+    @test g.axes[2] == [0.1, 0.2]
+
+    # 1-D grid
+    g1 = GridCMSample([1.0; 2.0; 3.0;;])
+    @test g1.axes == [[1.0, 2.0, 3.0]]
+
+    # Non-grid rows → ArgumentError
+    @test_throws ArgumentError GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1])  # missing (2.0,0.2)
+    @test_throws ArgumentError GridCMSample([1.0 0.1; 1.0 0.1; 2.0 0.2; 2.0 0.2])  # dup row
+
+    # ScatteredCMSample
+    s = ScatteredCMSample([0.13 0.7; 0.42 0.2; 0.91 0.55])
+    @test s isa ScatteredCMSample
+    @test size(s.params) == (3, 2)
+
+    # CMSample factory: grid path
+    @test CMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]) isa GridCMSample
+    # CMSample factory: scattered fallback (suppress the @info)
+    sc = @test_logs (:info,) match_mode=:any CMSample([0.13 0.7; 0.42 0.2; 0.91 0.55])
+    @test sc isa ScatteredCMSample
+
+    # reshapeToGrid round-trip: v[k] lands at the grid cell of row k
+    # rows are (1,0.1),(1,0.2),(2,0.1),(2,0.2); axes [1,2]×[0.1,0.2]
+    out = reshapeToGrid(g, [11, 12, 21, 22])
+    @test size(out) == (2, 2)
+    @test out[1, 1] == 11   # (1.0, 0.1)
+    @test out[1, 2] == 12   # (1.0, 0.2)
+    @test out[2, 1] == 21   # (2.0, 0.1)
+    @test out[2, 2] == 22   # (2.0, 0.2)
+
+    # length mismatch → ArgumentError
+    @test_throws ArgumentError reshapeToGrid(g, [1, 2, 3])
+    # scattered has no grid → error
+    @test_throws ErrorException reshapeToGrid(s, [1.0, 2.0, 3.0])
+end
+
+# ── CI-bound interpolation across CM parameter space ───────────────────────────
+
+@testset "CI bound interpolation" begin
+    # 1-D grid: 3 cohort points, 1 SM parameter
+    g1 = GridCMSample([1.0; 2.0; 3.0;;])
+    lb1 = reshape([0.10, 0.20, 0.30], 3, 1)
+    ub1 = reshape([0.50, 0.55, 0.60], 3, 1)
+    f1 = SmoreBase._buildBoundsInterpolant(g1, lb1, ub1, LinearCIInterp())
+
+    # Exact reproduction at cohort nodes
+    @test f1([1.0]) == ([0.10], [0.50])
+    @test f1([2.0]) == ([0.20], [0.55])
+    @test f1([3.0]) == ([0.30], [0.60])
+    # Linear between
+    lb_q, ub_q = f1([1.5])
+    @test lb_q[1] ≈ 0.15
+    @test ub_q[1] ≈ 0.525
+
+    # 2-D grid: 2 SM parameters, 4 cohort points (2×2 grid in CM space)
+    g2 = GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])
+    lb2 = [0.1 1.0;
+           0.2 1.5;
+           0.3 2.0;
+           0.4 2.5]
+    ub2 = [0.5 5.0;
+           0.6 5.5;
+           0.7 6.0;
+           0.8 6.5]
+    f2 = SmoreBase._buildBoundsInterpolant(g2, lb2, ub2, LinearCIInterp())
+
+    # Exact at a node: (1.0, 0.1) is row 1
+    lb_n, ub_n = f2([1.0, 0.1])
+    @test lb_n ≈ [0.1, 1.0]
+    @test ub_n ≈ [0.5, 5.0]
+
+    # Bilinear interior: center (1.5, 0.15) = mean of all four nodes
+    lb_c, ub_c = f2([1.5, 0.15])
+    @test lb_c ≈ [0.25, 1.75]
+    @test ub_c ≈ [0.65, 5.75]
+
+    # Unimplemented combination → ErrorException
+    s = ScatteredCMSample([0.13 0.7; 0.42 0.2])
+    @test_throws ErrorException SmoreBase._buildBoundsInterpolant(
+        s, zeros(2, 1), ones(2, 1), LinearCIInterp(),
+    )
+    @test_throws ErrorException SmoreBase._buildBoundsInterpolant(
+        g1, lb1, ub1, RBFCIInterp(),
+    )
+end
