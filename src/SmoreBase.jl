@@ -17,6 +17,8 @@ include("types/parameter_prior.jl")
 include("types/loss.jl")
 include("types/results.jl")
 include("types/fit_problem.jl")
+include("types/cm_sample.jl")
+include("types/ci_interp.jl")
 
 # Fitting
 include("fitting/objective.jl")
@@ -44,6 +46,12 @@ export SMFitProblem, SMFitResult, SMUQResult, ProfileLikelihoodResult, ProfileCu
 
 # Exports — CMData accessors
 export n_times, n_variables, n_conditions, n_param_sets
+
+# Exports — CM parameter sample layout (shared with SmoreGSA, SmoreFit)
+export AbstractCMSample, GridCMSample, ScatteredCMSample, CMSample, reshapeToGrid
+
+# Exports — CI bound interpolation across CM parameter space (shared with SmoreGSA, SmoreFit)
+export AbstractCIInterpolator, LinearCIInterp, RBFCIInterp
 
 # Exports — public API
 export fitSurrogate, sampleSMPredictions
