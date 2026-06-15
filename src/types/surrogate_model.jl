@@ -18,9 +18,9 @@ the package extension `SmoreBaseOrdinaryDiffEqExt`.
 - `y0` — initial conditions (`Vector{Float64}`)
 - `solver` — ODE algorithm (e.g., `Tsit5()`)
 - `output_variables` — indices of state variables that correspond to observables (`nothing` → all)
-- `pre_processor` — `Union{Nothing,Function}` applied to `(t, p, condition)` before solving
+- `pre_processor` — `Union{Nothing,Function}` of the form `(p, condition) -> (p_new, condition_new)`, applied before solving
 - `post_processor` — `Union{Nothing,Function}` applied to the prediction matrix after solving
-- `custom_solve_fn` — if supplied, replaces the default ODE solve step entirely
+- `custom_solve_fn` — if supplied, replaces the default ODE solve step entirely; receives the **preprocessed** `(p, condition)`
 - `custom_error_fn` — if supplied, replaces the default loss computation
 - `abstol`, `reltol` — ODE solver tolerances
 
@@ -78,7 +78,7 @@ where rows are time points and columns are output variables.
 
 # Fields
 - `fn` — analytical solution function
-- `pre_processor` — `Union{Nothing,Function}` applied to `(t, p, condition)` before evaluation
+- `pre_processor` — `Union{Nothing,Function}` of the form `(p, condition) -> (p_new, condition_new)`, applied before evaluation
 - `post_processor` — `Union{Nothing,Function}` applied to the prediction matrix after evaluation
 - `custom_error_fn` — if supplied, replaces the default loss computation
 

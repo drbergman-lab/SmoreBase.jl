@@ -1,5 +1,6 @@
 using SmoreBase
 using Distributions
+using OrdinaryDiffEq
 using RecipesBase
 using Test
 
@@ -191,13 +192,50 @@ end
     @test all(A_post .≈ 2.0)
 end
 
-@testset "ODESurrogateModel without extension" begin
-    sm = ODESurrogateModel(
-        ode_fn = (du, u, p, t) -> (du[1] = p[1] * u[1] * (1 - u[1] / p[2])),
-        y0     = [0.01],
-        solver = nothing,
+# OrdinaryDiffEq is loaded in the test target, so the ODE extension is active and the
+# "extension not loaded" stub for ODESurrogateModel is unreachable here. Instead exercise
+# the generic fallback that errors for any AbstractSurrogateModel without an _evaluate method.
+struct _UnimplementedSM <: SmoreBase.AbstractSurrogateModel end
+
+@testset "_evaluate fallback for unimplemented model" begin
+    @test_throws ErrorException SmoreBase._evaluate(_UnimplementedSM(), [0.0, 1.0], [0.5], "default")
+end
+
+@testset "ODESurrogateModel with extension" begin
+    # Logistic growth ODE: du/dt = r*u*(1 - u/K), p = [r, K], y0 = 0.01
+    ode_fn = (du, u, p, t) -> (du[1] = p[1] * u[1] * (1 - u[1] / p[2]))
+    t = [0.0, 0.5, 1.0, 2.0]
+    p = [0.5, 5.0]
+
+    sm = ODESurrogateModel(ode_fn = ode_fn, y0 = [0.01], solver = Tsit5())
+    A = SmoreBase._evaluate(sm, t, p, "default")
+    @test A isa AbstractMatrix
+    @test size(A) == (4, 1)
+    @test all(A .> 0)
+
+    # Regression for Issue 1: pre_processor must be applied for ODE models too.
+    # Doubling the growth rate r must yield strictly faster growth than the raw fit.
+    sm_pre = ODESurrogateModel(
+        ode_fn        = ode_fn,
+        y0            = [0.01],
+        solver        = Tsit5(),
+        pre_processor = (p, c) -> ([p[1] * 2, p[2]], c),
     )
-    @test_throws ErrorException SmoreBase._evaluate(sm, [0.0, 1.0], [0.5, 5.0], "default")
+    A_pre = SmoreBase._evaluate(sm_pre, t, p, "default")
+    @test all(A_pre[2:end] .> A[2:end])  # later times grow faster with doubled rate
+
+    # custom_solve_fn must receive the PRE-processed p (and condition).
+    captured = Ref{Vector{Float64}}()
+    sm_custom = ODESurrogateModel(
+        ode_fn          = ode_fn,
+        y0              = [0.01],
+        solver          = Tsit5(),
+        pre_processor   = (p, c) -> ([p[1] * 2, p[2]], c),
+        custom_solve_fn = (sm, t, p, c, y0) -> (captured[] = p; reshape(fill(p[1], length(t)), :, 1)),
+    )
+    A_custom = SmoreBase._evaluate(sm_custom, t, p, "default")
+    @test captured[] == [1.0, 5.0]      # 0.5 * 2
+    @test all(A_custom .≈ 1.0)
 end
 
 # ── Loss functions ─────────────────────────────────────────────────────────────

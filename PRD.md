@@ -88,8 +88,8 @@
 **Acceptance criteria:**
 - `_evaluate(sm::AnalyticalSurrogateModel, t, p, c)` calls `sm.fn(t, p, c)` and returns a matrix.
 - `_evaluate(sm::ODESurrogateModel, t, p, c)` solves the ODE and returns predictions at `t`.
-- `pre_processor` is applied before solve; `post_processor` is applied after.
-- If `custom_solve_fn` is supplied, it is called instead of the default ODE solver.
+- `pre_processor` is applied before solve (for **both** `ODESurrogateModel` and `AnalyticalSurrogateModel`); `post_processor` is applied after. Signature: `(p, condition) -> (p_new, condition_new)`.
+- If `custom_solve_fn` is supplied, it is called instead of the default ODE solver, and receives the **preprocessed** `(p, condition)`.
 
 ---
 

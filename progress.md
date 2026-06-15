@@ -252,3 +252,45 @@ Recipe registration happens inside the extension when the user loads RecipesBase
 
 ### Status
 All files written. Existing tests unchanged — `using RecipesBase` in each test file triggers the extension.
+
+---
+
+## Session: `pre_processor` fix for ODESurrogateModel (2026-06-15)
+
+### Goal
+Two `pre_processor` inconsistencies (from `PREPROCESSOR_HANDOFF.md`):
+1. The ODE extension's `_evaluate` never called `_applyPreprocessor`, so a `pre_processor`
+   on an `ODESurrogateModel` was silently ignored — violating PRD.md ("applied before solve").
+2. Both surrogate-model docstrings documented a 3-arg `(t, p, condition)` signature while
+   `_applyPreprocessor` calls `(p, condition)` — a 3-arg implementation would `MethodError`.
+
+### Key Design Decisions
+
+**`custom_solve_fn` receives PRE-processed inputs**
+The preprocessor runs at the top of `_evaluate`, before the custom-solve / default-solve
+branch, so both paths see the same transformed `(p, condition)`. This matches the analytical
+path (where `fn` receives `p_eff`/`c_eff`) and is the natural reading of "applied before solve."
+
+**No runtime guard when both `pre_processor` and `custom_solve_fn` are set**
+They compose cleanly (preprocess → custom solve → postprocess) and there are legitimate uses
+for both (e.g. log→linear transform + a bespoke solver). A warning would be noise. Instead the
+ordering is documented in the `custom_solve_fn` docstring and locked by a test asserting the
+custom solver receives the preprocessed `p`.
+
+**Issue 2: docs match code (option a)**
+The only `pre_processor` usage in the ecosystem is 2-arg `(p, c)`; nothing passes `t`. So both
+docstrings were updated to `(p, condition) -> (p_new, condition_new)` rather than threading `t`
+through the implementation. (Sibling `Smore/PRD.md:98` still says `(t, p, c)` — flagged, not
+touched, since it's a separate repo.)
+
+### Implementation
+- `ext/SmoreBaseOrdinaryDiffEqExt.jl`: apply preprocessor first; refactored to an if-else
+  yielding `result`, with a single trailing `return _applyPostprocessor(sm, result)`.
+- `src/types/surrogate_model.jl`: corrected both `pre_processor` docstrings; documented that
+  `custom_solve_fn` receives preprocessed `(p, condition)`.
+- `Project.toml`: added `OrdinaryDiffEq` to the test target (approved) to exercise the ODE path.
+- `test/runtests.jl`: new "ODESurrogateModel with extension" testset — basic solve, the Issue 1
+  regression (doubled rate → faster growth), and a custom_solve_fn capturing preprocessed `p`.
+
+### Status
+Implemented on `feature/ode-preprocessor`. Tests pending run.
