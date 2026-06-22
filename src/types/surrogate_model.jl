@@ -21,7 +21,6 @@ the package extension `SmoreBaseOrdinaryDiffEqExt`.
 - `pre_processor` — `Union{Nothing,Function}` of the form `(p, condition) -> (p_new, condition_new)`, applied before solving
 - `post_processor` — `Union{Nothing,Function}` applied to the prediction matrix after solving
 - `custom_solve_fn` — if supplied, replaces the default ODE solve step entirely; receives the **preprocessed** `(p, condition)`
-- `custom_error_fn` — if supplied, replaces the default loss computation
 - `abstol`, `reltol` — ODE solver tolerances
 
 # Example
@@ -34,7 +33,7 @@ sm = ODESurrogateModel(
 )
 ```
 """
-struct ODESurrogateModel{F,Pre,Post,Solve,Err} <: AbstractSurrogateModel
+struct ODESurrogateModel{F,Pre,Post,Solve} <: AbstractSurrogateModel
     ode_fn::F
     y0::Vector{Float64}
     solver::Any
@@ -42,7 +41,6 @@ struct ODESurrogateModel{F,Pre,Post,Solve,Err} <: AbstractSurrogateModel
     pre_processor::Pre
     post_processor::Post
     custom_solve_fn::Solve
-    custom_error_fn::Err
     abstol::Float64
     reltol::Float64
 end
@@ -55,7 +53,6 @@ function ODESurrogateModel(;
     pre_processor    = nothing,
     post_processor   = nothing,
     custom_solve_fn  = nothing,
-    custom_error_fn  = nothing,
     abstol::Float64  = 1e-6,
     reltol::Float64  = 1e-3,
 )
@@ -63,7 +60,7 @@ function ODESurrogateModel(;
         ode_fn, y0, solver,
         output_variables,
         pre_processor, post_processor,
-        custom_solve_fn, custom_error_fn,
+        custom_solve_fn,
         abstol, reltol,
     )
 end
@@ -80,7 +77,6 @@ where rows are time points and columns are output variables.
 - `fn` — analytical solution function
 - `pre_processor` — `Union{Nothing,Function}` of the form `(p, condition) -> (p_new, condition_new)`, applied before evaluation
 - `post_processor` — `Union{Nothing,Function}` applied to the prediction matrix after evaluation
-- `custom_error_fn` — if supplied, replaces the default loss computation
 
 # Example
 ```julia
@@ -89,20 +85,18 @@ sm = AnalyticalSurrogateModel(
 )
 ```
 """
-struct AnalyticalSurrogateModel{F,Pre,Post,Err} <: AbstractSurrogateModel
+struct AnalyticalSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel
     fn::F
     pre_processor::Pre
     post_processor::Post
-    custom_error_fn::Err
 end
 
 function AnalyticalSurrogateModel(;
     fn,
     pre_processor   = nothing,
     post_processor  = nothing,
-    custom_error_fn = nothing,
 )
-    return AnalyticalSurrogateModel(fn, pre_processor, post_processor, custom_error_fn)
+    return AnalyticalSurrogateModel(fn, pre_processor, post_processor)
 end
 
 # ── internal evaluation helpers ───────────────────────────────────────────────

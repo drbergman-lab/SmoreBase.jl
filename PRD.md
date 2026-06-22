@@ -69,7 +69,7 @@
 
 **Behavioral specification:**
 - `abstract type AbstractSurrogateModel end`
-- `ODESurrogateModel{F,Pre,Post,Solve,Err} <: AbstractSurrogateModel`:
+- `ODESurrogateModel{F,Pre,Post,Solve} <: AbstractSurrogateModel`:
   - `ode_fn::F` — in-place ODE RHS: `f!(du, u, p, t)` (SciML convention)
   - `y0::Vector{Float64}` — initial conditions; TODO: extend to `Dict{String,Vector{Float64}}` for condition-specific ICs
   - `solver::Any` — ODE algorithm (e.g., `Tsit5()`); typed `Any` to avoid hard compile-time dependency
@@ -77,11 +77,10 @@
   - `pre_processor::Pre` — `Union{Nothing,Function}` applied to inputs before evaluation
   - `post_processor::Post` — `Union{Nothing,Function}` applied to ODE output before returning predictions
   - `custom_solve_fn::Solve` — `Union{Nothing,Function}` — replaces the default ODE solve step if supplied
-  - `custom_error_fn::Err` — `Union{Nothing,Function}` — replaces the default loss computation if supplied
   - `abstol::Float64 = 1e-6`, `reltol::Float64 = 1e-3`
-- `AnalyticalSurrogateModel{F,Pre,Post,Err} <: AbstractSurrogateModel`:
+- `AnalyticalSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
   - `fn::F` — analytical solution: `(t::Vector, p::Vector, condition) -> Matrix{Float64}` where rows are time points, columns are output variables
-  - `pre_processor::Pre`, `post_processor::Post`, `custom_error_fn::Err`
+  - `pre_processor::Pre`, `post_processor::Post`
 - Internal dispatch: `_evaluate(sm::AbstractSurrogateModel, t, p, condition) -> Matrix{Float64}`
 - ODE extension: `_evaluate` on `ODESurrogateModel` is implemented in `ext/SmoreBaseOrdinaryDiffEqExt.jl`; loading `using OrdinaryDiffEq` activates it. Calling without the extension loaded throws a descriptive error.
 
