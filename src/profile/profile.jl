@@ -40,14 +40,28 @@ ProfileLikelihood(;
 ) = ProfileLikelihood(n_points, confidence_level, bounds)
 
 """
-    _uq(problem, fitResult, method; param_set_index) -> ProfileLikelihoodResult
+    quantifyUncertainty(problem, fitResult, method; param_set_index) -> SMUQResult
 
-Compute profile likelihood UQ for one param_set.
+Quantify uncertainty in fitted surrogate-model parameters.
 
-Not intended to be called by end users directly; a public wrapper will be added
-once the higher-level pipeline API is designed.
+This is the second stage of the pipeline (`fitSurrogate` → `quantifyUncertainty` →
+`sampleSMPredictions`). The UQ algorithm is selected by `method::AbstractUQMethod`;
+dispatch on that argument is the extension point for new UQ methods — define a
+`MyMethod <: AbstractUQMethod` and add a `quantifyUncertainty(::SMFitProblem,
+::SMFitResult, ::MyMethod)` method.
+
+The `ProfileLikelihood` method computes profile likelihood UQ for one param_set,
+returning a `ProfileLikelihoodResult`.
+
+# Arguments
+- `problem::SMFitProblem` — the fitting problem (model, data, prior, loss)
+- `fitResult::SMFitResult` — fitted parameters from `fitSurrogate`
+- `method::AbstractUQMethod` — UQ algorithm (e.g. `ProfileLikelihood()`)
+
+# Keyword arguments
+- `param_set_index::Int` — which param_set to profile (default: 1)
 """
-function _uq(
+function quantifyUncertainty(
     problem::SMFitProblem,
     fitResult::SMFitResult,
     method::ProfileLikelihood;
