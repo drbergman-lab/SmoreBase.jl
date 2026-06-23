@@ -37,25 +37,30 @@ end
 # `sampleSMPredictions` calls it, so adding a method here is all a new UQ result
 # type needs in order to flow through the prediction-sampling stage.
 #
-# All draws ultimately go through `_sampleFromProfiles`, which samples each parameter
-# independently from its marginal profile curve. SmoreGSA's uniform-box sampling reuses
-# this same core via `_flatProfileCurves` (a flat profile reduces the inverse-CDF draw
-# exactly to a uniform map onto [lb, ub]).
+# Profile draws go through `_sampleFromProfiles`, which samples each parameter independently
+# from its marginal profile curve. `sampleSMParametersInBounds` covers the uniform-box case
+# (a flat profile reduces the inverse-CDF draw to the affine map onto [lb, ub]) in closed
+# form; both share `_sobolUnit` for the underlying low-discrepancy points.
+
+# Shared unit-hypercube point generator: a [n_params × nSamples] low-discrepancy Sobol
+# grid in [0,1] with a per-dimension Cranley-Patterson shift. Both the profile sampler
+# and the bounds sampler draw from this, so they consume the RNG identically.
+function _sobolUnit(n_params::Int, nSamples::Int, rng::AbstractRNG)
+    U     = QuasiMonteCarlo.sample(nSamples, zeros(n_params), ones(n_params), SobolSample())
+    shift = rand(rng, n_params)           # Cranley-Patterson shift: one uniform offset per dimension
+    return mod.(U .+ shift, 1.0)         # wrap to [0,1] — preserves low-discrepancy structure
+end
 
 # Core sampler: draw [n_sm_params × nSamples] from a set of marginal profile curves.
 # Each parameter is drawn independently from its profile-LL-weighted marginal via
-# piecewise-linear inverse-CDF sampling, driven by low-discrepancy Sobol points with a
-# Cranley-Patterson shift.
+# piecewise-linear inverse-CDF sampling, driven by the shared Sobol points.
 function _sampleFromProfiles(
     profiles::AbstractVector{<:ProfileCurve},
     nSamples::Int,
     rng::AbstractRNG,
 )
     n_params = length(profiles)
-
-    U     = QuasiMonteCarlo.sample(nSamples, zeros(n_params), ones(n_params), SobolSample())  # [n_params × nSamples] in [0,1]
-    shift = rand(rng, n_params)           # Cranley-Patterson shift: one uniform offset per dimension
-    U     = mod.(U .+ shift, 1.0)        # wrap to [0,1] — preserves low-discrepancy structure
+    U        = _sobolUnit(n_params, nSamples, rng)
 
     params = Matrix{Float64}(undef, n_params, nSamples)
     for (i, pc) in enumerate(profiles)
@@ -113,35 +118,39 @@ function _predictionTimes(uqResult::SMUQResult)
     ))
 end
 
-# Flat profile curves over the box [lb, ub]: a constant log-likelihood makes each marginal
-# uniform, so `_sampleFromProfiles` reduces exactly to a uniform draw on the box. SmoreGSA
-# uses this to sample SM parameters within an interpolated CI box, reusing the one sampler
-# rather than maintaining a separate uniform sampler.
-#
-# A flat profile sits at the reference everywhere, so it never crosses the cutoff: the
-# parameter is fully unconstrained and its CI is the entire support [lb_i, ub_i].
-function _flatProfileCurves(
+"""
+    sampleSMParametersInBounds(lb, ub; nSamples, rng) -> Matrix
+
+Draw `nSamples` SM-parameter vectors uniformly within the box `[lb, ub]`, returned as
+`[n_sm_params × nSamples]`.
+
+This is the uninformative special case of [`sampleSMParameters`](@ref): a flat profile over
+the box yields uniform marginals, for which the inverse-CDF draw reduces in closed form to
+the affine map `lb + u·(ub − lb)`. So this samples directly from the bounds — sharing the
+Sobol + Cranley-Patterson point generation with the profile sampler but constructing no
+intermediate curve objects, keeping it allocation-light on hot paths. The result is
+bit-identical to routing flat curves through the profile sampler (asserted in the tests).
+
+Intended for callers (e.g. SmoreGSA) that need uniform SM-parameter samples within an
+interpolated CI box without reaching into SmoreBase internals.
+
+# Keyword arguments
+- `nSamples::Int` — number of parameter vectors to draw (default: 100)
+- `rng` — random number generator (default: `Random.default_rng()`)
+"""
+function sampleSMParametersInBounds(
     lb::AbstractVector,
     ub::AbstractVector;
-    names::AbstractVector{<:AbstractString} = ["p$i" for i in eachindex(lb)],
+    nSamples::Int    = 100,
+    rng::AbstractRNG = Random.default_rng(),
 )
-    n_params  = length(lb)
-    threshold = -0.5 * quantile(Chisq(1), 0.95)   # reference_ll (=0) − ½·χ²₁,₀.₉₅ ≈ -1.92
-    mid       = 0.5 .* (lb .+ ub)                 # box median (the re-optimized params are unconstrained)
-    return map(1:n_params) do i
-        optimal = repeat(reshape(collect(Float64, mid), 1, n_params), 2, 1)  # [2 × n_params]
-        optimal[1, i] = lb[i]                     # pin the profiled parameter to each grid endpoint
-        optimal[2, i] = ub[i]
-        ProfileCurve{Float64}(
-            i, String(names[i]),
-            Float64[lb[i], ub[i]],                # profile_values — two-point support
-            Float64[0.0, 0.0],                    # log_likelihoods — flat at reference_ll
-            optimal,
-            Float64(lb[i]), Float64(ub[i]),       # ci_lower, ci_upper — full support
-            threshold,
-            0.0,                                  # reference_ll
-        )
-    end
+    nSamples >= 1 || throw(ArgumentError("nSamples must be >= 1 (got $nSamples)."))
+    length(lb) == length(ub) ||
+        throw(ArgumentError("lb and ub must have the same length (got $(length(lb)) and $(length(ub)))."))
+    all(lb .<= ub) ||
+        throw(ArgumentError("each lb[i] must be <= ub[i]; an interpolated CI box may have crossed."))
+    U = _sobolUnit(length(lb), nSamples, rng)
+    return lb .+ U .* (ub .- lb)         # closed form of the flat-profile inverse CDF
 end
 
 """

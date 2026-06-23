@@ -490,24 +490,31 @@ end
 
 @testset "flat profile == uniform box sampling" begin
     lb_i, ub_i = 0.5, 1.5
-    pc = SmoreBase._flatProfileCurves([lb_i], [ub_i])[1]
 
     # The inverse-CDF draw on a flat 2-point profile is exactly the affine uniform map.
-    us  = [0.0, 0.1, 0.37, 0.5, 0.999]
-    got = SmoreBase._applyProfileInverseCDF(pc.profile_values, pc.log_likelihoods, us)
-    @test got ≈ lb_i .+ us .* (ub_i - lb_i)
+    # This is the identity that justifies `sampleSMParametersInBounds`' closed form.
+    us = [0.0, 0.1, 0.37, 0.5, 0.999]
+    @test SmoreBase._applyProfileInverseCDF([lb_i, ub_i], [0.0, 0.0], us) ≈ lb_i .+ us .* (ub_i - lb_i)
 
-    # Principled flat-profile fields
-    @test pc.profile_values  == [lb_i, ub_i]
-    @test pc.log_likelihoods == [0.0, 0.0]
-    @test pc.reference_ll    == 0.0
-    @test pc.ci_lower == lb_i && pc.ci_upper == ub_i        # flat ⇒ unconstrained ⇒ full support
-
-    # Box draws land in-bounds with the expected shape.
+    # The public box sampler applies that affine map over the shared Sobol points.
     lb, ub = [0.5, 2.0], [1.5, 8.0]
-    S = SmoreBase._sampleFromProfiles(SmoreBase._flatProfileCurves(lb, ub), 30, MersenneTwister(1))
-    @test size(S) == (2, 30)
-    @test all(lb[1] .<= S[1, :] .<= ub[1]) && all(lb[2] .<= S[2, :] .<= ub[2])
+    U   = SmoreBase._sobolUnit(length(lb), 30, MersenneTwister(1))
+    pub = sampleSMParametersInBounds(lb, ub; nSamples = 30, rng = MersenneTwister(1))
+    @test pub == lb .+ U .* (ub .- lb)
+    @test size(pub) == (2, 30)
+    @test all(lb[1] .<= pub[1, :] .<= ub[1]) && all(lb[2] .<= pub[2, :] .<= ub[2])
+
+    # Equivalence to the general profile sampler: a flat profile through `_sampleFromProfiles`
+    # must reproduce the closed-form box draw bit-for-bit.
+    flat = [ProfileCurve{Float64}(i, "p$i", Float64[lb[i], ub[i]], Float64[0.0, 0.0],
+                                  zeros(2, length(lb)), lb[i], ub[i], 0.0, 0.0)
+            for i in eachindex(lb)]
+    @test SmoreBase._sampleFromProfiles(flat, 30, MersenneTwister(1)) == pub
+
+    # Input validation, mirroring sampleSMPredictions / ParameterPrior.
+    @test_throws ArgumentError sampleSMParametersInBounds(lb, ub; nSamples = 0)
+    @test_throws ArgumentError sampleSMParametersInBounds([0.0, 1.0], [1.0])   # length mismatch
+    @test_throws ArgumentError sampleSMParametersInBounds([1.0], [0.0])        # lb > ub (crossed box)
 end
 
 # ── Plotting recipes ───────────────────────────────────────────────────────────
