@@ -4,7 +4,7 @@
 Bundles the four ingredients of a surrogate-model fitting problem: the model,
 the training data, the parameter prior, and the loss function.
 
-Pass one `SMFitProblem` to `fitSurrogate`, `_uq`, and `sampleSMPredictions`
+Pass one `SMFitProblem` to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
 instead of threading `sm`, `data`, `prior`, and `loss` through each call.
 Experimental conditions are derived automatically from the data via `_conditions`.
 
@@ -19,7 +19,7 @@ Experimental conditions are derived automatically from the data via `_conditions
 problem = SMFitProblem(sm, data, prior)                        # GaussianNLL by default
 problem = SMFitProblem(sm, data, prior; loss = CustomLoss(fn))
 result  = fitSurrogate(problem, P0)
-uq      = SmoreBase._uq(problem, result, ProfileLikelihood())
+uq      = quantifyUncertainty(problem, result, ProfileLikelihood())
 samples = sampleSMPredictions(problem, uq)
 ```
 """
