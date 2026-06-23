@@ -2,6 +2,7 @@ using SmoreBase
 using Distributions
 using OrdinaryDiffEq
 using RecipesBase
+using Random
 using Test
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -352,7 +353,7 @@ end
     result = fitSurrogate(prob, P0)
 
     method = ProfileLikelihood(n_points = 20, confidence_level = 0.95)
-    uq     = SmoreBase._uq(prob, result, method)
+    uq     = quantifyUncertainty(prob, result, method)
 
     @test uq isa ProfileLikelihoodResult
     @test length(uq.profiles) == 2
@@ -379,7 +380,7 @@ end
         custom_loss = CustomLoss((A, d, ki) -> SmoreBase._computeLoss(GaussianNLL(), A, d, ki))
         prob_c  = SMFitProblem(sm, data, prior; loss = custom_loss)
         result_c = fitSurrogate(prob_c, P0)
-        uq_c     = SmoreBase._uq(prob_c, result_c, ProfileLikelihood(n_points = 20))
+        uq_c     = quantifyUncertainty(prob_c, result_c, ProfileLikelihood(n_points = 20))
         for pc in uq_c.profiles
             mle_val = result_c.parameters[1, pc.parameter_index]
             mle_idx = findfirst(≈(mle_val; atol = 1e-10), pc.profile_values)
@@ -395,7 +396,7 @@ end
     )
     prob_ub   = SMFitProblem(sm, data, prior_unbounded)
     result_ub = fitSurrogate(prob_ub, P0)
-    @test_warn r"unbounded" @test_throws ArgumentError SmoreBase._uq(prob_ub, result_ub, ProfileLikelihood(n_points = 5))
+    @test_warn r"unbounded" @test_throws ArgumentError quantifyUncertainty(prob_ub, result_ub, ProfileLikelihood(n_points = 5))
 
     # Single-parameter SM: covers the isempty(free_idx) branch in _profileLL,
     # where fixing the only parameter leaves nothing to re-optimize.
@@ -410,7 +411,7 @@ end
         prob1   = SMFitProblem(sm1, data1, prior1)
         result1 = fitSurrogate(prob1, reshape([0.4], 1, 1))
 
-        uq1 = SmoreBase._uq(prob1, result1, ProfileLikelihood(n_points = 10))
+        uq1 = quantifyUncertainty(prob1, result1, ProfileLikelihood(n_points = 10))
         @test uq1 isa ProfileLikelihoodResult
         @test length(uq1.profiles) == 1
         pc1 = uq1.profiles[1]
@@ -433,7 +434,7 @@ end
     prob   = SMFitProblem(sm, data, prior)
     P0     = [0.5 5.0]
     result = fitSurrogate(prob, P0)
-    uq     = SmoreBase._uq(prob, result, ProfileLikelihood(n_points = 20))
+    uq     = quantifyUncertainty(prob, result, ProfileLikelihood(n_points = 20))
 
     samples = sampleSMPredictions(prob, uq; nSamples = 50)
 
@@ -448,6 +449,72 @@ end
     for i in 1:2
         @test all(lb[i] .<= samples.parameters[i, :] .<= ub[i])
     end
+end
+
+# ── UQ extension seam ────────────────────────────────────────────────────────────
+# A custom UQ result type only needs a `sampleSMParameters` method (and a `times`
+# field, or a `_predictionTimes` override) to flow through `sampleSMPredictions`.
+struct _ToyUQResult <: SMUQResult
+    n_params::Int
+    times::Vector{Float64}
+end
+
+function SmoreBase.sampleSMParameters(
+    r::_ToyUQResult;
+    nSamples::Int = 100,
+    rng           = Random.default_rng(),
+)
+    return rand(rng, r.n_params, nSamples)
+end
+
+@testset "UQ extension seam — custom SMUQResult" begin
+    t     = collect(0.0:0.5:5.0)
+    sm    = AnalyticalSurrogateModel(fn = _logistic)
+    prior = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+    data  = CMData(μ = vec(_logistic(t, [0.6, 4.0], nothing)), σ = 0.05 .* ones(length(t)), times = t)
+    prob  = SMFitProblem(sm, data, prior)
+
+    toy = _ToyUQResult(2, t)
+
+    # The public hook is callable directly...
+    P = sampleSMParameters(toy; nSamples = 7)
+    @test size(P) == (2, 7)
+
+    # ...and the custom result flows through sampleSMPredictions unchanged.
+    samples = sampleSMPredictions(prob, toy; nSamples = 15)
+    @test samples isa SampledPredictions
+    @test size(samples.parameters)  == (2, 15)
+    @test size(samples.predictions) == (length(t), 1, 15)
+    @test samples.times == t
+end
+
+@testset "flat profile == uniform box sampling" begin
+    lb_i, ub_i = 0.5, 1.5
+
+    # The inverse-CDF draw on a flat 2-point profile is exactly the affine uniform map.
+    # This is the identity that justifies `sampleSMParametersInBounds`' closed form.
+    us = [0.0, 0.1, 0.37, 0.5, 0.999]
+    @test SmoreBase._applyProfileInverseCDF([lb_i, ub_i], [0.0, 0.0], us) ≈ lb_i .+ us .* (ub_i - lb_i)
+
+    # The public box sampler applies that affine map over the shared Sobol points.
+    lb, ub = [0.5, 2.0], [1.5, 8.0]
+    U   = SmoreBase._sobolUnit(length(lb), 30, MersenneTwister(1))
+    pub = sampleSMParametersInBounds(lb, ub; nSamples = 30, rng = MersenneTwister(1))
+    @test pub == lb .+ U .* (ub .- lb)
+    @test size(pub) == (2, 30)
+    @test all(lb[1] .<= pub[1, :] .<= ub[1]) && all(lb[2] .<= pub[2, :] .<= ub[2])
+
+    # Equivalence to the general profile sampler: a flat profile through `_sampleFromProfiles`
+    # must reproduce the closed-form box draw bit-for-bit.
+    flat = [ProfileCurve{Float64}(i, "p$i", Float64[lb[i], ub[i]], Float64[0.0, 0.0],
+                                  zeros(2, length(lb)), lb[i], ub[i], 0.0, 0.0)
+            for i in eachindex(lb)]
+    @test SmoreBase._sampleFromProfiles(flat, 30, MersenneTwister(1)) == pub
+
+    # Input validation, mirroring sampleSMPredictions / ParameterPrior.
+    @test_throws ArgumentError sampleSMParametersInBounds(lb, ub; nSamples = 0)
+    @test_throws ArgumentError sampleSMParametersInBounds([0.0, 1.0], [1.0])   # length mismatch
+    @test_throws ArgumentError sampleSMParametersInBounds([1.0], [0.0])        # lb > ub (crossed box)
 end
 
 # ── Plotting recipes ───────────────────────────────────────────────────────────
@@ -483,7 +550,7 @@ end
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])
-    uq     = SmoreBase._uq(prob, result, ProfileLikelihood(n_points = 20))
+    uq     = quantifyUncertainty(prob, result, ProfileLikelihood(n_points = 20))
 
     # ProfileLikelihoodResult: delegates to ProfileCurve recipe → 2 RecipeData (one per parameter)
     rds = RecipesBase.apply_recipe(Dict{Symbol,Any}(), uq)
@@ -509,7 +576,7 @@ end
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])
-    uq     = SmoreBase._uq(prob, result, ProfileLikelihood(n_points = 20))
+    uq     = quantifyUncertainty(prob, result, ProfileLikelihood(n_points = 20))
     samples = sampleSMPredictions(prob, uq; nSamples = 30)
 
     # 1 output variable → 1 ribbon series
