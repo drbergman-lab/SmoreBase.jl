@@ -256,17 +256,19 @@ Making each step able to write its result to disk and read it back enables Nextf
 
 ---
 
-### Feature: Plotting (RecipesBase extension + Makie extension)
+### Feature: Plotting (RecipesBase extension)
 
-**One-line description:** Backend-agnostic plot recipes and Makie plots for every SmoreBase result type.
+**One-line description:** Plot recipes for every SmoreBase result type via the Plots/RecipesBase backend; Makie users build their own figures from the result types.
 
 **Priority:** Should-have
 
 **Behavioral specification:**
 
-`RecipesBase` and `Makie` are weak dependencies. The Plots extension (`SmoreBasePlotsExt`) activates when `RecipesBase` is loaded; the Makie extension (`SmoreBaseMakieExt`) activates when any Makie backend is loaded.
+`RecipesBase` is a weak dependency. The Plots extension (`SmoreBasePlotsExt`) activates when `RecipesBase` is loaded.
 
-`SMFitPlot` is a plain wrapper struct defined in the main package (not an extension) so both extensions can dispatch on it.
+There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` methods conflicted with the composability Makie users expect (they could not customize legend, scale, limits, or layout without reaching into `fig.content`), and the methods duplicated domain knowledge the Plots recipes already encode without adding capability — Makie's rendering, interactivity, and layout power are available to users with or without an extension. Instead, the result types expose their data and `docs/src/plotting.md` shows Makie users how to build each figure directly. See `progress.md` (Drop Makie extension) for the full rationale.
+
+`SMFitPlot` is a plain wrapper struct defined in the main package (not an extension) so the Plots extension can dispatch on it.
 
 | Type | Usage | What it shows |
 |------|-------|---------------|
@@ -285,8 +287,8 @@ Making each step able to write its result to disk and read it back enables Nextf
 
 **Acceptance criteria:**
 - All `apply_recipe` calls return non-empty results without errors.
-- `Makie.plot(...)` returns a `Makie.Figure` for each supported type.
 - Loading SmoreBase without any plotting backend does not error.
+- `docs/src/plotting.md` documents the Plots recipes and states there is no Makie extension (result types expose public fields for users who build their own).
 
 ---
 

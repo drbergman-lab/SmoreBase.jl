@@ -20,7 +20,7 @@ SmoreBase.jl is the core library of the [Smore](https://github.com/drbergman-lab
 - Surrogate model fitting (`fitSurrogate`) via bounded LBFGS optimization
 - Uncertainty quantification of SM parameters via `ProfileLikelihood`
 - Prediction sampling (`sampleSMPredictions`) within UQ-defined parameter regions
-- Optional plotting via RecipesBase.jl and Makie extensions
+- Optional plotting via a RecipesBase.jl (Plots) extension; Makie users build their own figures from the result types (no Makie extension)
 
 The surrogate model (SM) sits between a slow, expensive complex model (CM) and real-world data: the SM is trained on CM output, then used as a fast proxy for downstream analysis.
 
@@ -47,12 +47,11 @@ src/
 │   ├── profile.jl          # _uq, ProfileLikelihood dispatch
 │   └── ci.jl               # _computeCI, Wilks' theorem
 ├── plots/
-│   └── fit_recipe.jl       # SMFitPlot wrapper struct (exported; dispatched by both ext)
+│   └── fit_recipe.jl       # SMFitPlot wrapper struct (exported; dispatched by the Plots ext)
 └── sampling.jl             # sampleSMPredictions
 ext/
 ├── SmoreBaseOrdinaryDiffEqExt.jl  # ODE solving; activated when OrdinaryDiffEq loaded
-├── SmoreBasePlotsExt.jl           # RecipesBase recipes; activated when RecipesBase loaded
-└── SmoreBaseMakieExt.jl           # Makie plots; activated when any Makie backend loaded
+└── SmoreBasePlotsExt.jl           # RecipesBase recipes; activated when RecipesBase loaded
 test/
 └── runtests.jl
 ```
@@ -145,8 +144,8 @@ A feature is complete when **all** of the following are true:
 - Package entrypoint: `src/SmoreBase.jl` — add `include(...)` and update `export` when adding new source files
 - ODE extension: `ext/SmoreBaseOrdinaryDiffEqExt.jl` — activated by `using OrdinaryDiffEq`
 - Plots extension: `ext/SmoreBasePlotsExt.jl` — activated by loading `RecipesBase` (or any Plots.jl backend)
-- Makie extension: `ext/SmoreBaseMakieExt.jl` — activated by loading any Makie backend
-- `SMFitPlot` struct lives in `src/plots/fit_recipe.jl` (main package, not an extension) so both Plots and Makie extensions can dispatch on it
+- No Makie extension: Makie users build figures directly from the result types (see `docs/src/plotting.md`). Do not reintroduce a Makie extension — see `progress.md` (Drop Makie extension) for the rationale.
+- `SMFitPlot` struct lives in `src/plots/fit_recipe.jl` (main package, not an extension) so the Plots extension can dispatch on it
 - Run tests: `julia --project=. -e 'using Pkg; Pkg.test()'`
 
 ## Julia Environment Rules
@@ -154,4 +153,4 @@ A feature is complete when **all** of the following are true:
 - Always run Julia with `--project=.`
 - Preferred test command: `julia --project=. -e 'using Pkg; Pkg.test()'`
 - Do not edit `Manifest.toml` or add/bump dependencies without explicit approval.
-- `OrdinaryDiffEq`, `RecipesBase`, and `Makie` are weak deps; users must load them explicitly to activate the respective extensions.
+- `OrdinaryDiffEq` and `RecipesBase` are weak deps; users must load them explicitly to activate the respective extensions.

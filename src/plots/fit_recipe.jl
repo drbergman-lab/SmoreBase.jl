@@ -14,7 +14,7 @@ line on the CM data scatter ± pointwise σ error bars.
 
 # Example
 ```julia
-using Plots  # or: using CairoMakie
+using Plots
 plot(SMFitPlot(sm, data, fit_result))
 plot(SMFitPlot(sm, data, fit_result); param_set_index=2)
 ```

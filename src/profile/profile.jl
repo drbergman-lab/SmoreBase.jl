@@ -93,33 +93,46 @@ function quantifyUncertainty(
     for i in 1:n_params
         mle_val = p_mle[i]
 
-        # Proportional split: allocate grid points in proportion to distance from MLE to each boundary
-        frac_left = (mle_val - lb[i]) / (ub[i] - lb[i])
-        n_left    = max(1, round(Int, frac_left * (method.n_points - 1)) + 1)
-        n_right   = method.n_points - n_left + 1   # includes the shared MLE point
+        grid, center_idx = if mle_val == lb[i]
+            @assert method.n_points > 1 "Profile grid must have at least 2 points to scan away from MLE. Only $(method.n_points) requested."
+            collect(range(mle_val, ub[i]; length = method.n_points)), 1
+        elseif mle_val == ub[i]
+            @assert method.n_points > 1 "Profile grid must have at least 2 points to scan away from MLE. Only $(method.n_points) requested."
+            collect(range(lb[i], mle_val; length=method.n_points)), method.n_points
+        else
+            @assert method.n_points > 2 "Profile grid must have at least 3 points to scan away from MLE in two directions. Only $(method.n_points) requested."
+            # Proportional split: allocate grid points in proportion to distance from MLE to each boundary
+            frac_left = (mle_val - lb[i]) / (ub[i] - lb[i])
+            n_left = min(method.n_points - 2, # leave at least 2 points for the right side (including MLE)
+                max(1, # ensure at least 1 point on the left side (excluding MLE)
+                    round(Int, frac_left * (method.n_points - 1))
+                )
+            ) # excluding the MLE point, how many points to the left
+            n_right = method.n_points - n_left - 1   # excluding the MLE point, how many points to the right
 
-        left_grid  = collect(range(lb[i],   mle_val; length = n_left))
-        right_grid = collect(range(mle_val, ub[i];   length = n_right))
-        grid       = [left_grid; right_grid[2:end]]  # deduplicate MLE point → n_points total
+            left_grid = collect(range(lb[i], mle_val; length=n_left + 1))  # include MLE point
+            right_grid = collect(range(mle_val, ub[i]; length=n_right + 1))  # include MLE point
+            [left_grid; right_grid[2:end]], n_left + 1  # deduplicate MLE point → n_points total
+        end
 
         lls        = Vector{Float64}(undef, method.n_points)
         opt_params = Matrix{Float64}(undef, method.n_points, n_params)
 
-        # Evaluate the MLE grid point (index n_left)
-        lls[n_left], opt_params[n_left, :] =
+        # Evaluate the MLE grid point
+        lls[center_idx], opt_params[center_idx, :] =
             _profileLL(problem.sm, data_slice, copy(p_mle), conditions, problem.loss, i, mle_val, lb, ub)
 
         # Left scan: outward from MLE toward lb
-        p_warm = opt_params[n_left, :]
-        for j in (n_left - 1):-1:1
+        p_warm = opt_params[center_idx, :]
+        for j in (center_idx-1):-1:1
             lls[j], opt_params[j, :] =
                 _profileLL(problem.sm, data_slice, p_warm, conditions, problem.loss, i, grid[j], lb, ub)
             p_warm = opt_params[j, :]
         end
 
         # Right scan: outward from MLE toward ub
-        p_warm = opt_params[n_left, :]
-        for j in (n_left + 1):method.n_points
+        p_warm = opt_params[center_idx, :]
+        for j in (center_idx + 1):method.n_points
             lls[j], opt_params[j, :] =
                 _profileLL(problem.sm, data_slice, p_warm, conditions, problem.loss, i, grid[j], lb, ub)
             p_warm = opt_params[j, :]
