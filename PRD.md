@@ -129,7 +129,7 @@
   - Default implementation: `ConditionSpec()` (single `"default"` condition)
   - `CMData` overrides with its `condition_labels` field
   - Custom `AbstractCMData` subtypes with multiple conditions must override this method
-- `SMFitProblem` is passed to `fitSurrogate`, `_uq`, and `sampleSMPredictions` instead of threading `sm`, `data`, `prior`, `loss`, and `conditions` through each call
+- `SMFitProblem` is passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions` instead of threading `sm`, `data`, `prior`, `loss`, and `conditions` through each call
 
 **Acceptance criteria:**
 - `SMFitProblem(sm, data, prior)` stores `GaussianNLL()` as default loss.
@@ -178,7 +178,7 @@
   - `n_points::Int = 50` — number of grid points per parameter profile
   - `confidence_level::Float64 = 0.95`
   - `bounds::Union{Nothing, ParameterPrior} = nothing` — profile range; defaults to `SMFitResult` bounds
-- Internal dispatch: `_uq(problem::SMFitProblem, fitResult, method::AbstractUQMethod; param_set_index) -> ProfileLikelihoodResult`
+- Public dispatch: `quantifyUncertainty(problem::SMFitProblem, fitResult, method::AbstractUQMethod; param_set_index) -> ProfileLikelihoodResult`
 
 **Profile likelihood method:**
 - For each SM parameter `θ_i`: sweep a grid of `n_points` values anchored at the MLE, fix `θ_i`, re-optimize all other parameters

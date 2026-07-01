@@ -44,7 +44,7 @@ src/
 │   ├── objective.jl        # _buildObjective, _computeLoss
 │   └── parallel.jl         # parallel fitting helpers
 ├── profile/
-│   ├── profile.jl          # _uq, ProfileLikelihood dispatch
+│   ├── profile.jl          # quantifyUncertainty, ProfileLikelihood dispatch
 │   └── ci.jl               # _computeCI, Wilks' theorem
 ├── plots/
 │   └── fit_recipe.jl       # SMFitPlot wrapper struct (exported; dispatched by the Plots ext)
@@ -81,7 +81,7 @@ Claude Code (the CLI tool) runs directly on your machine and can freely run `git
 
 - **Functions:** `camelCase` (e.g., `fitSurrogate`, `sampleSMPredictions`)
   - `camelCase` distinguishes function calls from variable/field names, consistent with ModelManager.jl
-- **Internal helpers:** `_camelCase` prefix (e.g., `_evaluate`, `_buildObjective`, `_uq`)
+- **Internal helpers:** `_camelCase` prefix (e.g., `_evaluate`, `_buildObjective`, `_computeCI`)
 - **Types / Structs:** `PascalCase` (e.g., `CMData`, `ODESurrogateModel`, `SMFitResult`)
 - **Constants / module-level refs:** `snake_case` for internal refs; `SCREAMING_SNAKE_CASE` for env vars
 - **Files:** `snake_case.jl` (e.g., `cm_data.jl`, `surrogate_model.jl`)
