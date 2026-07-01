@@ -294,3 +294,70 @@ touched, since it's a separate repo.)
 
 ### Status
 Implemented on `feature/ode-preprocessor`. Tests pending run.
+
+---
+
+## Session: Drop Makie extension (2026-06-24)
+
+### Goal
+Resolve the Makie plot-composability problem (handoff `HANDOFF-makie-plot-composability.md`)
+by **removing the Makie extension entirely** rather than making it composable.
+
+### Problem
+`SmoreBaseMakieExt` shipped all-in-one `Makie.plot(r) -> Figure` methods that baked in the
+`Figure`, `Axis`, and legend. Users could not customize legend position, axis scale, limits, or
+panel layout without reaching into `fig.content`. The "Makie Plot Extensions" session
+(2026-05-21) chose ordinary `plot(r) -> Figure` methods over recipes for simplicity; that
+simplicity is exactly what cost the composability.
+
+### Decision: remove, don't fix
+We weighed three options:
+1. **Add a `legend_position` kwarg** — rejected: a kwarg treadmill (then `limits`, then
+   `linecolor`, …); wrong altitude.
+2. **Convert to a `@recipe` + `plot!` primitive** — the originally-approved design. Rejected
+   on implementation: a Makie `@recipe` defined *inside an extension module* generates its
+   plotting function (`profilecurve!`) in that module's namespace, unreachable via
+   `using SmoreBase`. Exposing it requires predeclaring **and exporting** stub functions in the
+   core package, plus a name-collision workaround (`@recipe` lowercases the type name, and
+   `ProfileCurve` is already a core data type). That is a lot of machinery in the core package
+   for a weak-dep convenience.
+3. **Remove the Makie extension; document build-your-own instead** — chosen.
+
+Rationale: the only thing the extension provided was *convenience one-liners that encode where
+each result type stores its data*. It did **not** provide nicer rendering, interactivity, or
+layout power — those are Makie's and are available to users with or without an extension. The
+Plots recipes already encode the same domain knowledge with free attribute/layout passthrough.
+Maintaining a second backend — in the form that fights customization — was not worth one
+convenience method per type. The durable, zero-maintenance version of that knowledge is
+documentation.
+
+### Implementation
+- Deleted `ext/SmoreBaseMakieExt.jl` and `HANDOFF-makie-plot-composability.md`.
+- `Project.toml`: removed `Makie` from `[weakdeps]`, `[extensions]`, `[compat]`.
+- `docs/src/plotting.md` (new): documents the Plots recipes and states there is no Makie
+  extension (result types expose public fields for users who roll their own). Registered in
+  `docs/make.jl`. NB: an earlier draft inlined full per-type Makie recipes here, but that was
+  cut as clutter/maintenance surface for an unsupported path — the build-your-own drawing code
+  now lives only where it is actually needed, in the SmoreExamples notebook cells.
+- Updated `README.md`, `PRD.md` (Feature: Plotting), `CLAUDE.md` (repo structure, integration
+  essentials, weak-dep list), and the `SMFitPlot` docstring to drop Makie-extension claims.
+
+### Decided / do-not-revisit
+- **Do not reintroduce a Makie extension.** If a future need arises, prefer extending the
+  build-your-own docs over shipping `Figure`-building methods.
+
+### Cross-repo follow-ups
+- **SmoreGSA** (`ext/SmoreGSAMakieExt.jl`): same flaw, same fix — extension removed in its own
+  repo as part of this work.
+- **SmoreExamples**: 4 Pluto notebooks called the removed convenience methods. All 13 call
+  sites (`plot(uq)`, `plot(samples)`, `plot(SMFitPlot(...))`, and SmoreGSA's
+  `plot(result_efast/morris/custom)`) were rewritten into self-contained `let`-block Makie
+  figures and **verified by headless Pluto runs** (`nonidentifiability.jl` → blocks A/B/C incl.
+  `SmoreBase._evaluate`; `logistic_growth_pipeline.jl` → block D EFAST/Morris/custom + A/B/C):
+  all cells run without error. `single_obs_custom_data.jl` and `replicate_runs_custom_loss.jl`
+  use only the profile/band blocks (covered); `cm_posterior_pipeline.jl` hand-builds its figures
+  already and was untouched.
+
+### Status
+Implemented on `feature/drop-makie-ext`. SmoreBase and SmoreGSA test suites pass; SmoreExamples
+notebooks verified headless. Not committed — branches ready for review.

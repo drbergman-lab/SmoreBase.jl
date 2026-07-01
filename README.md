@@ -64,7 +64,6 @@ samples = sampleSMPredictions(problem, uq)
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
 - [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
 - [x] Plots extension (`SmoreBasePlotsExt`) — `plot(SMFitPlot(sm, data, fit))`, `plot(fit_result)`, `plot(uq_result)`, `plot(sampled_preds)`; activated by loading `RecipesBase`
-- [x] Makie extension (`SmoreBaseMakieExt`) — `Makie.plot(...)` for all result types; activated by loading any Makie backend
 
 ### Remaining
 
