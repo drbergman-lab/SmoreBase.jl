@@ -58,9 +58,9 @@ samples = sampleSMPredictions(problem, uq)
 - [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
 - [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types
 - [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
-- [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over cm_param_sets); accepts a matrix `P0` or a single vector `P0` broadcast to every cm_param_set
+- [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over cm_param_sets); accepts a matrix `P0`, a single vector `P0` broadcast to every cm_param_set, or no `P0` (defaults to `median.(prior.distributions)`)
 - [x] `SMFitResult` — result type for SM fitting
-- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms
+- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms; `fitResult` may be omitted, in which case it is computed internally via `fitSurrogate(problem; executor)`
 - [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ
 - [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region

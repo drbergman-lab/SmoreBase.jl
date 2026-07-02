@@ -449,6 +449,42 @@ In progress on `feature/ode-sm-and-batched-uq`.
 
 ---
 
+## Session: Default `P0` from prior medians; `quantifyUncertainty` without a `fitResult` (2026-07-02)
+
+### Goal
+Two small ergonomic additions: `fitSurrogate(problem)` should work without an explicit `P0`,
+and `quantifyUncertainty` should work without first calling `fitSurrogate` at all.
+
+### Decisions
+
+**Default `P0 = median.(problem.prior.distributions)`**
+Median is a reasonable central guess for any `UnivariateDistribution` (not just `Uniform`), and
+`Distributions.median` is already available package-wide (`using Distributions` in
+`SmoreBase.jl`) with no risk of ambiguity against `Statistics.median` (disjoint method
+signatures). Implemented as a thin new method that delegates to the existing
+`fitSurrogate(problem, P0::AbstractVector; kwargs...)`, so the broadcast-to-every-cm_param_set
+behavior is inherited for free.
+
+**`quantifyUncertainty` no-`fitResult` overloads compute the fit internally, don't discard it**
+Added three new methods mirroring the existing `(method, problem, fitResult[, index(es)])`
+arities, minus `fitResult`. Each calls `fitSurrogate(problem; executor)` (default-P0 fit) and
+delegates to the corresponding `fitResult`-taking method. Dispatch is unambiguous — these differ
+from the existing methods purely in arity/argument type (no `SMFitResult` argument at all), not
+in a `Union`-typed argument. The internally-computed `fitResult` isn't lost: `ProfileLikelihoodResult`
+already carries it in `fit_result`, so callers who only wanted to skip the manual `fitSurrogate`
+call can still recover the fit from the result.
+
+**`executor` is reused for both stages, not split into two keywords**
+The internal fit and the profiling step share one `executor` keyword. A caller who wants
+`:threads` for profiling almost certainly wants it for the (much cheaper) fit too; splitting into
+`fit_executor`/`profile_executor` would be a kwarg for a case nobody asked for.
+
+### Status
+Implemented on `feature/default-p0-and-uq`. New tests (`fitSurrogate` no-`P0` case,
+`quantifyUncertainty without fitResult`) added; full suite green.
+
+---
+
 ## Session: `param_set` → `cm_param_set` rename (2026-07-02)
 
 ### Goal

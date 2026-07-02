@@ -10,6 +10,7 @@ One independent bounded optimization is run per cm_param_set using `Fminbox(LBFG
 - `problem::SMFitProblem` — bundles the surrogate model, CM data, parameter prior, and loss function
 - `P0::AbstractMatrix` — initial parameter guesses `[n_cm_param_sets × n_sm_params]`
 - `P0::AbstractVector` — a single guess, broadcast to every cm_param_set's row
+- `P0` omitted — defaults to `median.(problem.prior.distributions)`, broadcast to every cm_param_set
 
 # Keyword arguments
 - `executor` — controls how cm_param_sets are fitted:
@@ -61,4 +62,20 @@ function fitSurrogate(problem::SMFitProblem, P0::AbstractVector; kwargs...)
     n_ps = n_cm_param_sets(problem.data)
     P0_mat = repeat(reshape(collect(Float64, P0), 1, :), n_ps, 1)
     return fitSurrogate(problem, P0_mat; kwargs...)
+end
+
+"""
+    fitSurrogate(problem; executor, optimOptions) -> SMFitResult
+
+`P0`-free form: defaults `P0` to the median of each parameter's prior distribution
+(`median.(problem.prior.distributions)`), broadcast to every cm_param_set.
+
+# Example
+```julia
+result = fitSurrogate(problem)   # P0 = median.(problem.prior.distributions)
+```
+"""
+function fitSurrogate(problem::SMFitProblem; kwargs...)
+    P0 = median.(problem.prior.distributions)
+    return fitSurrogate(problem, P0; kwargs...)
 end
