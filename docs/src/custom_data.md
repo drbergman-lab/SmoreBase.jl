@@ -1,6 +1,6 @@
 # Custom CM Data Types
 
-SmoreBase ships with `CMData`, a general-purpose container for complex-model (CM) summary statistics. For cases where `CMData` does not fit — e.g. your CM produces structured outputs that don't map cleanly onto a `[n_times × n_variables × n_conditions × n_param_sets]` array — you can subtype `AbstractCMData` and teach SmoreBase how to use your type.
+SmoreBase ships with `CMData`, a general-purpose container for complex-model (CM) summary statistics. For cases where `CMData` does not fit — e.g. your CM produces structured outputs that don't map cleanly onto a `[n_times × n_variables × n_conditions × n_cm_param_sets]` array — you can subtype `AbstractCMData` and teach SmoreBase how to use your type.
 
 ## Required interface
 
@@ -8,8 +8,8 @@ SmoreBase ships with `CMData`, a general-purpose container for complex-model (CM
 
 Always implement:
 
-- `_sliceParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice`
-- `n_param_sets(data::MyType) -> Int` — `fitSurrogate` uses this to validate `P0`
+- `_sliceCmParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice`
+- `n_cm_param_sets(data::MyType) -> Int` — `fitSurrogate` uses this to validate `P0`
 
 Override the defaults when applicable (both default to single-condition / no-time-axis behaviour):
 
@@ -24,7 +24,7 @@ Override the defaults when applicable (both default to single-condition / no-tim
 
 ### On your `AbstractCMDataSlice` subtype
 
-Only needed if you define a custom slice type rather than returning `CMDataSlice` from `_sliceParamSet`:
+Only needed if you define a custom slice type rather than returning `CMDataSlice` from `_sliceCmParamSet`:
 
 - `_times(slice::MySlice)` — default: `nothing`; override for time-series data (the SM is evaluated at these times)
 - `_mean`, `_sd`, `_cov` — required if using `GaussianNLL`
@@ -33,10 +33,10 @@ Only needed if you define a custom slice type rather than returning `CMDataSlice
 
 - `CustomLoss` — for fully custom loss logic that doesn't use `GaussianNLL`
 
-### 1. `_sliceParamSet`
+### 1. `_sliceCmParamSet`
 
 ```julia
-SmoreBase._sliceParamSet(data::MyData, pi::Int) -> AbstractCMDataSlice
+SmoreBase._sliceCmParamSet(data::MyData, pi::Int) -> AbstractCMDataSlice
 ```
 
 Return an `AbstractCMDataSlice` containing only the data for param-set `pi`. Some guidelines:
@@ -47,8 +47,8 @@ Return an `AbstractCMDataSlice` containing only the data for param-set `pi`. Som
 The simplest option is to return a `CMDataSlice` built from views into your own arrays:
 
 ```julia
-function SmoreBase._sliceParamSet(data::MyData, pi::Int)
-    ps_labels = SmoreBase._paramSetLabels(data)
+function SmoreBase._sliceCmParamSet(data::MyData, pi::Int)
+    ps_labels = SmoreBase._cmParamSetLabels(data)
     return CMDataSlice(
         @view(data.mean_arr[:, :, :, pi]),
         @view(data.sd_arr[:, :, :, pi]),
@@ -75,7 +75,7 @@ SmoreBase._cov(d::MySlice)  = nothing           # or [n_variables, n_variables, 
 
 Field names in your slice type are entirely up to you — just return the right array from each accessor.
 
-If you return a `CMDataSlice` from `_sliceParamSet`, these accessors are already defined and no further work is needed.
+If you return a `CMDataSlice` from `_sliceCmParamSet`, these accessors are already defined and no further work is needed.
 
 ### 3. A `CustomLoss` function (optional)
 
@@ -86,7 +86,7 @@ fn(A_pred::AbstractMatrix, data_slice::AbstractCMDataSlice, condition_idx::Int) 
 ```
 
 - `A_pred` — SM prediction at the current optimizer iterate, shape `[n_times × n_variables]`
-- `data_slice` — the object returned by your `_sliceParamSet`
+- `data_slice` — the object returned by your `_sliceCmParamSet`
 - `condition_idx` — index of the current condition within `data_slice`
 
 ## Worked example
@@ -108,18 +108,19 @@ struct ScaledCMDataSlice <: AbstractCMDataSlice
     scale::Vector{Float64}
 end
 
-function SmoreBase._sliceParamSet(data::ScaledCMData, pi::Int)
+function SmoreBase._sliceCmParamSet(data::ScaledCMData, pi::Int)
     return ScaledCMDataSlice(
-        SmoreBase._sliceParamSet(data.base, pi),
+        SmoreBase._sliceCmParamSet(data.base, pi),
         data.scale,
     )
 end
 
-SmoreBase.n_times(d::ScaledCMData)      = n_times(d.base)
-SmoreBase.n_variables(d::ScaledCMData)  = n_variables(d.base)
-SmoreBase.n_conditions(d::ScaledCMData) = n_conditions(d.base)
-SmoreBase.n_param_sets(d::ScaledCMData) = n_param_sets(d.base)
-SmoreBase._conditions(d::ScaledCMData)  = SmoreBase._conditions(d.base)
+SmoreBase.n_cm_param_sets(d::ScaledCMData) = n_cm_param_sets(d.base)
+SmoreBase._times(d::ScaledCMData)          = SmoreBase._times(d.base)
+SmoreBase._conditions(d::ScaledCMData)     = SmoreBase._conditions(d.base)
+
+# n_variables is not used by the pipeline; only implement it if you want it for inspection code
+SmoreBase.n_variables(d::ScaledCMData) = n_variables(d.base)
 
 # Custom loss that applies the per-condition scale
 scaled_loss = CustomLoss() do A_pred, slice::ScaledCMDataSlice, ki
@@ -145,10 +146,10 @@ result  = fitSurrogate(problem, P0)
 
 ### On your `AbstractCMData` subtype
 
-Only `n_param_sets` must be implemented explicitly. Everything else is either derived or optional:
+Only `n_cm_param_sets` must be implemented explicitly. Everything else is either derived or optional:
 
 ```julia
-SmoreBase.n_param_sets(d::MyData) = size(d.my_array, 5)   # whichever dim holds param-sets
+SmoreBase.n_cm_param_sets(d::MyData) = size(d.my_array, 5)   # whichever dim holds param-sets
 ```
 
 `n_conditions` and `n_times` are derived automatically — do not implement them.
@@ -170,4 +171,4 @@ SmoreBase.n_variables(d::MySlice)  = size(d.my_view, 2)
 SmoreBase.n_conditions(d::MySlice) = size(d.my_view, 3)
 ```
 
-`n_param_sets` is intentionally not defined on `AbstractCMDataSlice` — a slice always represents exactly one param-set.
+`n_cm_param_sets` is intentionally not defined on `AbstractCMDataSlice` — a slice always represents exactly one param-set.
