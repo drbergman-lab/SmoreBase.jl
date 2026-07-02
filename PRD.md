@@ -159,6 +159,8 @@
   - `P0::AbstractVector` — a single guess, broadcast to every cm_param_set's row (delegates to the matrix method)
   - `executor` — `:serial` (default), `:threads`, `:distributed`, or any callable
   - `optimOptions::NamedTuple = (;)` — forwarded to `Optimization.jl` `solve()`
+- `fitSurrogate(problem::SMFitProblem; executor, optimOptions) -> SMFitResult`
+  - No `P0`: defaults to `median.(problem.prior.distributions)`, broadcast to every cm_param_set (delegates to the `AbstractVector` method)
 - Implementation: `Fminbox(LBFGS())` via `OptimizationOptimJL` + `ForwardDiff`; one optimizer call per cm_param_set
 - `SMFitResult{T<:Real}`:
   - `parameters::Matrix{T}` — `[n_cm_param_sets × n_sm_params]`
@@ -173,6 +175,7 @@
 - With `executor=:threads`, results are identical to `:serial` (modulo floating point).
 - If a cm_param_set fails to converge, `converged[i] = false` and `parameters[i, :]` contains the best point found.
 - `fitSurrogate(problem, P0::AbstractVector)` produces the same result as `fitSurrogate(problem, repeat(P0', n_cm_param_sets, 1))`.
+- `fitSurrogate(problem)` (no `P0`) produces the same result as `fitSurrogate(problem, median.(problem.prior.distributions))`.
 
 ---
 
@@ -194,6 +197,12 @@
   - `quantifyUncertainty(method::AbstractUQMethod, problem::SMFitProblem, fitResult, cm_param_set_indices::AbstractVector{<:Integer}; executor=:serial) -> Vector{ProfileLikelihoodResult}` — explicit subset/order; the no-arg form delegates here with `1:n_cm_param_sets(problem.data)`.
   - Each method has one fixed return type (no runtime branching on argument value within a method body). `executor` reuses `_resolveExecutor` from `fitting/parallel.jl` (`:serial`, `:threads`, `:distributed`, or a callable), since profiling many cm_param_sets at once is more expensive than fitting (`n_params × n_points` re-optimizations per cm_param_set).
   - **Breaking change from earlier versions:** the previous single-result-only signature `quantifyUncertainty(problem, fitResult, method; cm_param_set_index=1)` is replaced — argument order changes (`method` first) and the no-index call now returns a `Vector` (of length 1 when `problem.data` has a single cm_param_set) rather than a bare `ProfileLikelihoodResult`.
+- No-`fitResult` overloads — mirror the three signatures above without `fitResult`, fitting internally first:
+  - `quantifyUncertainty(method, problem::SMFitProblem; executor=:serial) -> Vector{ProfileLikelihoodResult}`
+  - `quantifyUncertainty(method, problem::SMFitProblem, cm_param_set_index::Integer) -> ProfileLikelihoodResult`
+  - `quantifyUncertainty(method, problem::SMFitProblem, cm_param_set_indices::AbstractVector{<:Integer}; executor=:serial) -> Vector{ProfileLikelihoodResult}`
+  - Each computes `fitResult = fitSurrogate(problem; executor)` (default-P0 fit, i.e. prior medians) and delegates to the matching `fitResult`-taking method above. `executor` is reused for both the internal fit and the profiling — no separate keyword.
+  - The internally-computed `fitResult` is not discarded: it is embedded in the returned `ProfileLikelihoodResult`(s) via the existing `fit_result` field, so callers can still recover it.
 
 **Profile likelihood method:**
 - For each SM parameter `θ_i`: sweep a grid of `n_points` values anchored at the MLE, fix `θ_i`, re-optimize all other parameters
@@ -218,6 +227,7 @@
 - The MLE value is always a grid point; its profile LL matches `reference_ll` to optimizer tolerance.
 - `quantifyUncertainty(method, problem, fitResult)` (no index) returns one `ProfileLikelihoodResult` per cm_param_set in `problem.data`, in order.
 - `quantifyUncertainty(method, problem, fitResult, i)` equals the `i`-th entry of the all-cm_param_sets call.
+- `quantifyUncertainty(method, problem)` (no `fitResult`) equals `quantifyUncertainty(method, problem, fitSurrogate(problem))`; likewise for the `cm_param_set_index` and `cm_param_set_indices` no-`fitResult` overloads against their `fitResult`-taking counterparts.
 
 **Future (not in v0):**
 - Adaptive profile grid that expands toward the CI boundary.

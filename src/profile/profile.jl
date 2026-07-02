@@ -66,17 +66,23 @@ The `ProfileLikelihood` method computes profile likelihood UQ via Wilks' theorem
 # Arguments
 - `method::AbstractUQMethod` — UQ algorithm (e.g. `ProfileLikelihood()`)
 - `problem::SMFitProblem` — the fitting problem (model, data, prior, loss)
-- `fitResult::SMFitResult` — fitted parameters from `fitSurrogate`
+- `fitResult::SMFitResult` — fitted parameters from `fitSurrogate`; if omitted, computed
+  internally via `fitSurrogate(problem; executor)` (default `P0` = prior medians) and embedded
+  in the returned result(s)' `fit_result` field
 
 # Keyword arguments
 - `executor` — controls how cm_param_sets are profiled (same semantics as `fitSurrogate`):
   `:serial` (default), `:threads`, `:distributed`, or any callable `(f, itr) -> Vector`.
-  Ignored by the single-`cm_param_set_index` method.
+  Not accepted by the single-`cm_param_set_index` method (with or without `fitResult`). When
+  `fitResult` is omitted, `executor` also controls the internal `fitSurrogate` call — for the
+  all-cm_param_sets and explicit-subset forms only; the single-index fitResult-free form always
+  fits with the default `:serial` executor.
 
 # Example
 ```julia
 uq_all = quantifyUncertainty(ProfileLikelihood(), problem, result)        # all cm_param_sets
 uq_one = quantifyUncertainty(ProfileLikelihood(), problem, result, 1)     # just the first
+uq_fit = quantifyUncertainty(ProfileLikelihood(), problem)                # fits internally
 ```
 """
 function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem, fitResult::SMFitResult;
@@ -90,6 +96,38 @@ function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem, f
     return Vector{ProfileLikelihoodResult{Float64}}(
         map_fn(i -> quantifyUncertainty(method, problem, fitResult, i), cm_param_set_indices)
     )
+end
+
+"""
+    quantifyUncertainty(method, problem::SMFitProblem; executor) -> Vector{ProfileLikelihoodResult}
+    quantifyUncertainty(method, problem::SMFitProblem, cm_param_set_index::Integer) -> ProfileLikelihoodResult
+    quantifyUncertainty(method, problem::SMFitProblem, cm_param_set_indices::AbstractVector{<:Integer}; executor) -> Vector{ProfileLikelihoodResult}
+
+`fitResult`-free forms: fit `problem` first via `fitSurrogate(problem; executor)` (default `P0`
+= prior medians), then profile the resulting MLE. The fitted `SMFitResult` is not discarded — it
+is embedded in each returned `ProfileLikelihoodResult.fit_result`.
+
+# Example
+```julia
+uq_all = quantifyUncertainty(ProfileLikelihood(), problem)        # fits internally, all cm_param_sets
+uq_one = quantifyUncertainty(ProfileLikelihood(), problem, 1)     # fits internally, just the first
+```
+"""
+function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem; executor = :serial)
+    fitResult = fitSurrogate(problem; executor)
+    return quantifyUncertainty(method, problem, fitResult; executor)
+end
+
+function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem,
+                              cm_param_set_index::Integer)
+    fitResult = fitSurrogate(problem)
+    return quantifyUncertainty(method, problem, fitResult, cm_param_set_index)
+end
+
+function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem,
+                              cm_param_set_indices::AbstractVector{<:Integer}; executor = :serial)
+    fitResult = fitSurrogate(problem; executor)
+    return quantifyUncertainty(method, problem, fitResult, cm_param_set_indices; executor)
 end
 
 function quantifyUncertainty(

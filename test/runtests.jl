@@ -386,6 +386,13 @@ end
     result_mat  = fitSurrogate(prob_multi, repeat([0.5 5.0], 3, 1))
     @test result_vec.parameters ≈ result_mat.parameters
     @test size(result_vec.parameters) == (3, 2)
+
+    # No-P0 form defaults to the median of each parameter's prior.
+    P0_median = median.(prior.distributions)
+    result_default  = fitSurrogate(prob)
+    result_explicit = fitSurrogate(prob, P0_median)
+    @test result_default.initial_parameters ≈ reshape(P0_median, 1, :)
+    @test result_default.parameters ≈ result_explicit.parameters atol = 1e-4
 end
 
 # ── Profile likelihood ────────────────────────────────────────────────────────
@@ -509,6 +516,44 @@ end
     for i in 1:n_ps
         @test uq_all_map[i].profiles[1].log_likelihoods == uq_all[i].profiles[1].log_likelihoods
     end
+end
+
+@testset "quantifyUncertainty without fitResult" begin
+    t = collect(0.0:5.0:50.0)
+    p_true = [0.6, 4.0]
+    μ_true = vec(_logistic(t, p_true, nothing))
+    n_ps   = 3
+    data   = CMData(μ = repeat(μ_true, 1, n_ps), σ = 0.05 .* ones(length(μ_true), n_ps), times = t,
+                     cm_param_sets = n_ps)
+
+    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+    prob   = SMFitProblem(sm, data, prior)
+    method = ProfileLikelihood(n_points = 15, confidence_level = 0.95)
+
+    fitResult = fitSurrogate(prob)   # default P0 = median.(prior.distributions)
+
+    # No index -> equivalent to fitting internally, then calling the fitResult-taking method.
+    uq_all      = quantifyUncertainty(method, prob)
+    uq_all_ref  = quantifyUncertainty(method, prob, fitResult)
+    @test uq_all isa Vector{<:ProfileLikelihoodResult}
+    @test length(uq_all) == n_ps
+    for i in 1:n_ps
+        @test uq_all[i].profiles[1].profile_values ≈ uq_all_ref[i].profiles[1].profile_values
+        @test uq_all[i].profiles[1].log_likelihoods ≈ uq_all_ref[i].profiles[1].log_likelihoods
+    end
+    @test uq_all[1].fit_result.parameters ≈ fitResult.parameters
+
+    # Explicit single index -> bare ProfileLikelihoodResult, matching the no-fitResult all-cm_param_sets call.
+    uq_2 = quantifyUncertainty(method, prob, 2)
+    @test uq_2 isa ProfileLikelihoodResult
+    @test uq_2.profiles[1].profile_values ≈ uq_all[2].profiles[1].profile_values
+
+    # Explicit subset/order -> Vector, respecting the requested order.
+    uq_subset = quantifyUncertainty(method, prob, [3, 1])
+    @test length(uq_subset) == 2
+    @test uq_subset[1].profiles[1].profile_values ≈ uq_all[3].profiles[1].profile_values
+    @test uq_subset[2].profiles[1].profile_values ≈ uq_all[1].profiles[1].profile_values
 end
 
 # ── sampleSMPredictions ───────────────────────────────────────────────────────
