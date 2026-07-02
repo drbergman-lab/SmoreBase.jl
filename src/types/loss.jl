@@ -13,8 +13,8 @@ Gaussian negative log-likelihood loss (default).
 Without full covariance (`Σ = nothing`):
 `NLL = 0.5 * Σ((pred - μ)² / σ²) + 0.5 * Σ(log(2π σ²))`
 
-With full covariance (`Σ` shape `[n_variables, n_variables, n_times, n_conditions, n_param_sets]`):
-multivariate Gaussian NLL summed over time points for the given condition and param_set.
+With full covariance (`Σ` shape `[n_variables, n_variables, n_times, n_conditions, n_cm_param_sets]`):
+multivariate Gaussian NLL summed over time points for the given condition and cm_param_set.
 """
 struct GaussianNLL <: AbstractLoss end
 
@@ -38,7 +38,7 @@ Compute scalar loss between SM prediction matrix `A_pred` (`[n_times × n_variab
 and the corresponding condition slice of `data_slice` at `condition_idx`.
 
 `data_slice` must be an `AbstractCMDataSlice` — a single-param-set view produced by
-`_sliceParamSet`. The `param_set_idx` dimension has already been dropped.
+`_sliceCmParamSet`. The `cm_param_set_idx` dimension has already been dropped.
 """
 function _computeLoss(
     ::GaussianNLL,

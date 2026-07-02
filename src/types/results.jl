@@ -11,11 +11,11 @@ abstract type SMUQResult end
 Result of fitting a surrogate model to CM summary statistics.
 
 # Fields
-- `parameters` — fitted SM parameters `[n_param_sets × n_sm_params]`
-- `errors` — objective value (loss) per param_set at the fitted parameters
+- `parameters` — fitted SM parameters `[n_cm_param_sets × n_sm_params]`
+- `errors` — objective value (loss) per cm_param_set at the fitted parameters
 - `initial_parameters` — initial guesses supplied to `fitSurrogate`
 - `prior` — `ParameterPrior` used during fitting (bounds and parameter names live here)
-- `converged` — convergence flag per param_set
+- `converged` — convergence flag per cm_param_set
 - `optim_results` — raw `Optimization.jl` solution objects
 """
 struct SMFitResult{T<:Real}
@@ -59,7 +59,7 @@ end
 """
     ProfileLikelihoodResult{T<:Real} <: SMUQResult
 
-Result of profile likelihood UQ for one param_set.
+Result of profile likelihood UQ for one cm_param_set.
 
 # Fields
 - `profiles` — one `ProfileCurve` per SM parameter; each curve is self-contained

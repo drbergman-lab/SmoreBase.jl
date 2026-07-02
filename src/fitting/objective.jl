@@ -1,4 +1,4 @@
-# Build the optimization objective for a single param_set.
+# Build the optimization objective for a single cm_param_set.
 # Returns a closure `(p, _hyper) -> Float64` compatible with Optimization.jl.
 function _buildObjective(
     sm::AbstractSurrogateModel,

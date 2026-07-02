@@ -22,7 +22,7 @@ sm = ODESurrogateModel(
 
 # Supply summary statistics from your complex model runs
 data = CMData(
-    mean  = ...,   # [n_param_sets × n_conditions × n_times × n_outputs]
+    mean  = ...,   # [n_cm_param_sets × n_conditions × n_times × n_outputs]
     sd    = ...,   # same shape
     times = t,
 )
@@ -31,12 +31,13 @@ data = CMData(
 prior   = ParameterPrior(lower=[0.0, 0.0], upper=[2.0, 10.0], names=["r", "K"])
 problem = SMFitProblem(sm, data, prior)   # loss defaults to GaussianNLL()
 
-# Fit SM parameters (one fit per param_set)
-P0  = [0.5 5.0]   # initial guess [n_param_sets × n_sm_params]
+# Fit SM parameters (one fit per cm_param_set)
+P0  = [0.5 5.0]   # initial guess [n_cm_param_sets × n_sm_params]
 fit = fitSurrogate(problem, P0)
 
-# Quantify uncertainty via profile likelihood
-uq = quantifyUncertainty(problem, fit, ProfileLikelihood())
+# Quantify uncertainty via profile likelihood (explicit index 1: single cm_param_set here;
+# omit the index entirely to profile every cm_param_set and get a Vector back)
+uq = quantifyUncertainty(ProfileLikelihood(), problem, fit, 1)
 
 # Sample SM predictions within the UQ-defined parameter region
 samples = sampleSMPredictions(problem, uq)
@@ -50,22 +51,23 @@ samples = sampleSMPredictions(problem, uq)
 
 ### Completed
 
-- [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_times, n_variables, n_conditions, n_param_sets]`)
-- [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view; custom subtypes implement `_sliceParamSet`; documented in `docs/src/custom_data.md`
+- [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_times, n_variables, n_conditions, n_cm_param_sets]`)
+- [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view; custom subtypes implement `_sliceCmParamSet`; documented in `docs/src/custom_data.md`
 - [x] `ConditionSpec`, `ParameterPrior` — supporting types (`ParameterPrior` holds `Distributions.jl` priors; box bounds via `Uniform`)
-- [x] `ODESurrogateModel`, `AnalyticalSurrogateModel` — surrogate model types with `_evaluate` dispatch
+- [x] `ODESurrogateModel`, `AnalyticalSurrogateModel`, `CustomSolverSurrogateModel` — surrogate model types with `_evaluate` dispatch; `ODESurrogateModel.t0` configures where the ODE solve `tspan` starts (default `0.0`, independent of the requested observation times)
 - [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
 - [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types
 - [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
-- [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over param_sets)
+- [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over cm_param_sets); accepts a matrix `P0` or a single vector `P0` broadcast to every cm_param_set
 - [x] `SMFitResult` — result type for SM fitting
-- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty` dispatch; MLE-anchored grid with proportional split and outward warm-start
+- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms
 - [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ
+- [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
 - [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
 - [x] Plots extension (`SmoreBasePlotsExt`) — `plot(SMFitPlot(sm, data, fit))`, `plot(fit_result)`, `plot(uq_result)`, `plot(sampled_preds)`; activated by loading `RecipesBase`
 
 ### Remaining
 
-- [ ] `ODESurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions
+- [ ] `ODESurrogateModel.y0` / `CustomSolverSurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions; relatedly, allow `pre_processor` to alter `y0` itself (not just `p`/`condition`) for conditions that change an initial compartment value (e.g. immunotherapy) — see PRD.md
 - [ ] Pipeline persistence — HDF5 serialization/deserialization of `CMData`, `SMFitResult`, `ProfileLikelihoodResult`, `SampledPredictions`

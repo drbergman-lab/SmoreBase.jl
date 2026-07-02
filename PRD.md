@@ -22,16 +22,16 @@
 
 **Behavioral specification:**
 - `abstract type AbstractCMData end` — base type for CM observation containers
-- `abstract type AbstractCMDataSlice <: AbstractCMData end` — base type for a single-param-set view; has no param-set axis (`n_param_sets` not defined). Custom `AbstractCMData` subtypes must implement `_sliceParamSet(data, pi) -> AbstractCMDataSlice`.
+- `abstract type AbstractCMDataSlice <: AbstractCMData end` — base type for a single-param-set view; has no param-set axis (`n_cm_param_sets` not defined). Custom `AbstractCMData` subtypes must implement `_sliceCmParamSet(data, pi) -> AbstractCMDataSlice`.
 - `CMData{T<:Real} <: AbstractCMData` — summary statistics (mean + uncertainty) from CM simulation runs:
-  - `μ` — mean observations; canonical shape `[n_times, n_variables, n_conditions, n_param_sets]`; lower-dimensional inputs promoted automatically via keyword constructor
+  - `μ` — mean observations; canonical shape `[n_times, n_variables, n_conditions, n_cm_param_sets]`; lower-dimensional inputs promoted automatically via keyword constructor
   - `σ` — pointwise standard deviations (same shape as `μ`)
-  - `Σ` — optional full covariance `[n_variables, n_variables, n_times, n_conditions, n_param_sets]`; `nothing` means independent observations
+  - `Σ` — optional full covariance `[n_variables, n_variables, n_times, n_conditions, n_cm_param_sets]`; `nothing` means independent observations
   - `times::Union{Nothing,Vector{T}}` — shared time grid
   - `variable_labels::Vector{String}` — names of observable output variables
   - `condition_labels::Vector{String}` — labels for experimental conditions
-  - `param_set_labels::Vector{String}` — labels for CM parameter vectors (one SM fit per param_set)
-- `CMDataSlice{T<:Real} <: AbstractCMDataSlice` — zero-copy view into a single param-set of a `CMData`; fields `μ`, `σ`, `Σ` are `SubArray` views; created by `_sliceParamSet(data::CMData, pi)`.
+  - `cm_param_set_labels::Vector{String}` — labels for CM parameter vectors (one SM fit per cm_param_set)
+- `CMDataSlice{T<:Real} <: AbstractCMDataSlice` — zero-copy view into a single param-set of a `CMData`; fields `μ`, `σ`, `Σ` are `SubArray` views; created by `_sliceCmParamSet(data::CMData, pi)`.
 - Note: `CMData` holds CM-generated output only. Real-world observational data enters the pipeline in `SmoreFit`, not here.
 - The keyword constructor accepts both Unicode and ASCII aliases:
   - `μ` or `mean` — mean observations
@@ -51,7 +51,7 @@
   - Box bounds derived via `_lowerBounds(prior)` / `_upperBounds(prior)` from distribution support
 
 **Acceptance criteria:**
-- `CMData(μ=..., σ=..., times=t)` and `CMData(mean=..., sd=..., times=t)` both construct successfully with default param_set/condition labels.
+- `CMData(μ=..., σ=..., times=t)` and `CMData(mean=..., sd=..., times=t)` both construct successfully with default cm_param_set/condition labels.
 - Supplying both `μ=` and `mean=` throws a descriptive `ArgumentError`.
 - Mismatched `μ` / `σ` shapes throw a descriptive `ArgumentError`.
 - `ConditionSpec(["control", "treated"])` stores 2 condition labels.
@@ -69,26 +69,34 @@
 
 **Behavioral specification:**
 - `abstract type AbstractSurrogateModel end`
-- `ODESurrogateModel{F,Pre,Post,Solve} <: AbstractSurrogateModel`:
+- `ODESurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
   - `ode_fn::F` — in-place ODE RHS: `f!(du, u, p, t)` (SciML convention)
   - `y0::Vector{Float64}` — initial conditions; TODO: extend to `Dict{String,Vector{Float64}}` for condition-specific ICs
   - `solver::Any` — ODE algorithm (e.g., `Tsit5()`); typed `Any` to avoid hard compile-time dependency
   - `output_variables::Union{Nothing,Vector{Int}}` — indices of state variables that correspond to observables; `nothing` means all state variables
   - `pre_processor::Pre` — `Union{Nothing,Function}` applied to inputs before evaluation
   - `post_processor::Post` — `Union{Nothing,Function}` applied to ODE output before returning predictions
-  - `custom_solve_fn::Solve` — `Union{Nothing,Function}` — replaces the default ODE solve step if supplied
+  - `t0::Float64 = 0.0` — start of the ODE solve `tspan`; the state at `t0` is `y0`. Observations are returned at the requested `t` via `saveat`, independent of `t0`.
   - `abstol::Float64 = 1e-6`, `reltol::Float64 = 1e-3`
 - `AnalyticalSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
   - `fn::F` — analytical solution: `(t::Vector, p::Vector, condition) -> Matrix{Float64}` where rows are time points, columns are output variables
   - `pre_processor::Pre`, `post_processor::Post`
+- `CustomSolverSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
+  - `solve_fn::F` — `(t::Vector, p::Vector, condition, y0::Vector{Float64}) -> Matrix{Float64}`
+  - `y0::Vector{Float64}` — initial conditions, passed through to `solve_fn`
+  - `pre_processor::Pre`, `post_processor::Post`
+  - `_evaluate` is implemented in the main package
 - Internal dispatch: `_evaluate(sm::AbstractSurrogateModel, t, p, condition) -> Matrix{Float64}`
 - ODE extension: `_evaluate` on `ODESurrogateModel` is implemented in `ext/SmoreBaseOrdinaryDiffEqExt.jl`; loading `using OrdinaryDiffEq` activates it. Calling without the extension loaded throws a descriptive error.
 
 **Acceptance criteria:**
 - `_evaluate(sm::AnalyticalSurrogateModel, t, p, c)` calls `sm.fn(t, p, c)` and returns a matrix.
-- `_evaluate(sm::ODESurrogateModel, t, p, c)` solves the ODE and returns predictions at `t`.
-- `pre_processor` is applied before solve (for **both** `ODESurrogateModel` and `AnalyticalSurrogateModel`); `post_processor` is applied after. Signature: `(p, condition) -> (p_new, condition_new)`.
-- If `custom_solve_fn` is supplied, it is called instead of the default ODE solver, and receives the **preprocessed** `(p, condition)`.
+- `_evaluate(sm::ODESurrogateModel, t, p, c)` solves the ODE from `t0` to `t[end]` (not from `t[1]`) and returns predictions at `t` via `saveat`.
+- `_evaluate(sm::CustomSolverSurrogateModel, t, p, c)` calls `sm.solve_fn(t, p_eff, c_eff, sm.y0)` with the **preprocessed** `(p, condition)`.
+- `pre_processor` is applied before solve/evaluate (for all three surrogate model types); `post_processor` is applied after. Signature: `(p, condition) -> (p_new, condition_new)`.
+
+**Future (not in v0):**
+- Allow `pre_processor` to also alter `y0` (not just `p`/`condition`) — e.g. a condition like "immunotherapy" that changes one compartment's initial value rather than (or in addition to) a parameter. Would require widening the `pre_processor` signature to `(p, condition, y0) -> (p_new, condition_new, y0_new)` for `ODESurrogateModel` and `CustomSolverSurrogateModel`; `AnalyticalSurrogateModel` has no `y0` and is unaffected.
 
 ---
 
@@ -108,7 +116,7 @@
 - Internal: `_computeLoss(loss, A_pred, data_slice::AbstractCMDataSlice, condition_idx) -> Float64`; dispatches on `AbstractCMDataSlice` — passing unsliced `CMData` is a type error.
 
 **Acceptance criteria:**
-- `_computeLoss(GaussianNLL(), A_pred, slice, 1)` returns a scalar, where `slice = _sliceParamSet(data, 1)`.
+- `_computeLoss(GaussianNLL(), A_pred, slice, 1)` returns a scalar, where `slice = _sliceCmParamSet(data, 1)`.
 - `CustomLoss(fn)` where `fn` returns a scalar integrates transparently with `fitSurrogate`.
 
 **Ruled out:**
@@ -140,29 +148,31 @@
 
 ### Feature: Surrogate Model Fitting
 
-**One-line description:** Fit SM parameters to CM summary statistics for each param_set.
+**One-line description:** Fit SM parameters to CM summary statistics for each cm_param_set.
 
 **Priority:** Must-have
 
 **Behavioral specification:**
 - `fitSurrogate(problem::SMFitProblem, P0; executor, optimOptions) -> SMFitResult`
   - `problem::SMFitProblem` — bundles sm, data, prior, and loss; conditions derived from `problem.data`
-  - `P0::AbstractMatrix` — initial parameter guesses `[n_param_sets × n_sm_params]`
+  - `P0::AbstractMatrix` — initial parameter guesses `[n_cm_param_sets × n_sm_params]`
+  - `P0::AbstractVector` — a single guess, broadcast to every cm_param_set's row (delegates to the matrix method)
   - `executor` — `:serial` (default), `:threads`, `:distributed`, or any callable
   - `optimOptions::NamedTuple = (;)` — forwarded to `Optimization.jl` `solve()`
-- Implementation: `Fminbox(LBFGS())` via `OptimizationOptimJL` + `ForwardDiff`; one optimizer call per param_set
+- Implementation: `Fminbox(LBFGS())` via `OptimizationOptimJL` + `ForwardDiff`; one optimizer call per cm_param_set
 - `SMFitResult{T<:Real}`:
-  - `parameters::Matrix{T}` — `[n_param_sets × n_sm_params]`
-  - `errors::Vector{T}` — objective value per param_set
+  - `parameters::Matrix{T}` — `[n_cm_param_sets × n_sm_params]`
+  - `errors::Vector{T}` — objective value per cm_param_set
   - `initial_parameters::Matrix{T}`
   - `prior::ParameterPrior` — carries bounds and parameter names
   - `converged::BitVector`
   - `optim_results::Vector{Any}`
 
 **Acceptance criteria:**
-- Returns an `SMFitResult` with `parameters` in `[lb, ub]` for each param_set.
+- Returns an `SMFitResult` with `parameters` in `[lb, ub]` for each cm_param_set.
 - With `executor=:threads`, results are identical to `:serial` (modulo floating point).
-- If a param_set fails to converge, `converged[i] = false` and `parameters[i, :]` contains the best point found.
+- If a cm_param_set fails to converge, `converged[i] = false` and `parameters[i, :]` contains the best point found.
+- `fitSurrogate(problem, P0::AbstractVector)` produces the same result as `fitSurrogate(problem, repeat(P0', n_cm_param_sets, 1))`.
 
 ---
 
@@ -178,7 +188,12 @@
   - `n_points::Int = 50` — number of grid points per parameter profile
   - `confidence_level::Float64 = 0.95`
   - `bounds::Union{Nothing, ParameterPrior} = nothing` — profile range; defaults to `SMFitResult` bounds
-- Public dispatch: `quantifyUncertainty(problem::SMFitProblem, fitResult, method::AbstractUQMethod; param_set_index) -> ProfileLikelihoodResult`
+- Public dispatch, `method` first (the extension point for future `AbstractUQMethod` subtypes — matches SmoreGSA's `_runSensitivity(method, ...)` convention):
+  - `quantifyUncertainty(method::AbstractUQMethod, problem::SMFitProblem, fitResult; executor=:serial) -> Vector{ProfileLikelihoodResult}` — no index; profiles **all** cm_param_sets in `problem.data`, row-aligned. This is the default entry point.
+  - `quantifyUncertainty(method::AbstractUQMethod, problem::SMFitProblem, fitResult, cm_param_set_index::Integer) -> ProfileLikelihoodResult` — single cm_param_set, opt-in.
+  - `quantifyUncertainty(method::AbstractUQMethod, problem::SMFitProblem, fitResult, cm_param_set_indices::AbstractVector{<:Integer}; executor=:serial) -> Vector{ProfileLikelihoodResult}` — explicit subset/order; the no-arg form delegates here with `1:n_cm_param_sets(problem.data)`.
+  - Each method has one fixed return type (no runtime branching on argument value within a method body). `executor` reuses `_resolveExecutor` from `fitting/parallel.jl` (`:serial`, `:threads`, `:distributed`, or a callable), since profiling many cm_param_sets at once is more expensive than fitting (`n_params × n_points` re-optimizations per cm_param_set).
+  - **Breaking change from earlier versions:** the previous single-result-only signature `quantifyUncertainty(problem, fitResult, method; cm_param_set_index=1)` is replaced — argument order changes (`method` first) and the no-index call now returns a `Vector` (of length 1 when `problem.data` has a single cm_param_set) rather than a bare `ProfileLikelihoodResult`.
 
 **Profile likelihood method:**
 - For each SM parameter `θ_i`: sweep a grid of `n_points` values anchored at the MLE, fix `θ_i`, re-optimize all other parameters
@@ -195,17 +210,43 @@
 - `ProfileLikelihoodResult{T<:Real} <: SMUQResult`:
   - `profiles::Vector{ProfileCurve{T}}`
   - `fit_result::SMFitResult{T}`
-  - `cohort_index::Int`
-  - `n_profile_points::Int`
+  - `times::Vector{T}`
 
 **Acceptance criteria:**
 - For a well-identified parameter, `ci_lower < fitted_value < ci_upper`.
 - For an unidentifiable parameter (flat likelihood), `ci_lower` and/or `ci_upper` is `nothing`.
 - The MLE value is always a grid point; its profile LL matches `reference_ll` to optimizer tolerance.
+- `quantifyUncertainty(method, problem, fitResult)` (no index) returns one `ProfileLikelihoodResult` per cm_param_set in `problem.data`, in order.
+- `quantifyUncertainty(method, problem, fitResult, i)` equals the `i`-th entry of the all-cm_param_sets call.
 
 **Future (not in v0):**
 - Adaptive profile grid that expands toward the CI boundary.
 - `Bootstrap <: AbstractUQMethod`, `MCMC <: AbstractUQMethod`.
+
+---
+
+### Feature: CM Sample
+
+**One-line description:** Container for a set of cm_param_sets at which SM UQ results are known, consumed by SmoreGSA's sensitivity analysis and SmoreFit's posterior inference.
+
+**Priority:** Must-have
+
+**Behavioral specification:**
+- `abstract type AbstractCMSample end`
+- `GridCMSample <: AbstractCMSample`:
+  - `params::Matrix{Float64}` — `[n_cm_param_sets × n_cm_params]`; rows must form the Cartesian product of unique sorted values in each column
+  - `axes::Vector{Vector{Float64}}` — sorted unique values along each CM dimension
+  - `names::Vector{String}` — CM parameter names, one per column of `params`; if not supplied via the keyword constructor, auto-generated as `"cm_1", "cm_2", ...`
+- `ScatteredCMSample <: AbstractCMSample`:
+  - `params::Matrix{Float64}` — arbitrary (non-grid) CM parameter points
+  - `names::Vector{String}` — same convention as `GridCMSample`
+- `CMSample(params::AbstractMatrix; names=nothing) -> AbstractCMSample` — convenience factory: builds a `GridCMSample` if the rows form a regular grid, else falls back to `ScatteredCMSample` (reported via `@info`)
+- Carrying `names` here means downstream consumers that only need CM parameter labels (e.g. SmoreFit's `buildPosterior`) don't need a separate `ParameterPrior` just for naming — that's now redundant unless the consumer also needs distributions (e.g. SmoreGSA's `runSensitivity`, which uses `cm_prior` for inverse-CDF sampling, not just names).
+
+**Acceptance criteria:**
+- `GridCMSample(params)` / `ScatteredCMSample(params)` without `names` auto-generate `"cm_1", ..., "cm_n"`.
+- `GridCMSample(params; names=["cm_a","cm_b"])` stores the supplied names; length must match `size(params, 2)`.
+- `CMSample(params; names=...)` threads `names` through to whichever concrete type it constructs.
 
 ---
 
@@ -273,13 +314,13 @@ There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` 
 | Type | Usage | What it shows |
 |------|-------|---------------|
 | `SMFitPlot` | `plot(SMFitPlot(sm, data, fit))` | SM fit line overlaid on CM data ± σ; one subplot per output variable |
-| `SMFitResult` | `plot(fit_result)` | Fitted parameter values per param_set, colored by convergence; one subplot per SM parameter |
+| `SMFitResult` | `plot(fit_result)` | Fitted parameter values per cm_param_set, colored by convergence; one subplot per SM parameter |
 | `ProfileLikelihoodResult` / `ProfileCurve` | `plot(uq_result)` | Profile LL curves with CI threshold, MLE, and CI bound vlines; one subplot per SM parameter |
 | `SampledPredictions` | `plot(sampled_preds)` | Quantile ribbon (default 5th–95th) + median line; one subplot per output variable |
 
 **Custom attributes:**
 - `band_quantile::Float64 = 0.9` on `SampledPredictions`
-- `param_set_index::Int = 1`, `condition_index::Int = 1` on `SMFitPlot`
+- `cm_param_set_index::Int = 1`, `condition_index::Int = 1` on `SMFitPlot`
 - Colorblind-friendly colors: `#0072B2` (converged) / `#D55E00` (not converged)
 
 **Testing:**

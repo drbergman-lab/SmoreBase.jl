@@ -10,36 +10,45 @@ grid-aware posterior.
 abstract type AbstractCMSample end
 
 """
-    GridCMSample(params)
+    GridCMSample(params; names=nothing)
 
 CM parameter points on a regular grid (rows = Cartesian product of per-dimension values).
 
 # Arguments
-- `params` — `[n_cohorts × n_cm_params]` matrix; rows must form the Cartesian product of
+- `params` — `[n_cm_param_sets × n_cm_params]` matrix; rows must form the Cartesian product of
   unique sorted values in each column
+- `names` — CM parameter names, one per column of `params`; defaults to auto-generated
+  `"cm_1", "cm_2", ...` if not supplied
 
 # Fields
-- `params` — raw matrix `[n_cohorts × n_cm_params]`
+- `params` — raw matrix `[n_cm_param_sets × n_cm_params]`
 - `axes`   — `axes[d]` holds the sorted unique values along CM dimension `d`
+- `names`  — CM parameter names, one per column of `params`
 
-Throws `ArgumentError` if the rows are not consistent with a Cartesian product structure.
+Throws `ArgumentError` if the rows are not consistent with a Cartesian product structure, or if
+`names` is supplied with the wrong length.
 
 # Example
 ```julia
 # 1-D grid over a single CM parameter
 cm_sample = GridCMSample([1.0; 2.0; 3.0; 4.0; 5.0;;])
 
-# 2-D grid over two CM parameters (4 cohorts)
-cm_sample = GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])
+# 2-D grid over two CM parameters (4 cm_param_sets), with names
+cm_sample = GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]; names = ["cm_r", "cm_K"])
 ```
 """
 struct GridCMSample <: AbstractCMSample
     params :: Matrix{Float64}
     axes   :: Vector{Vector{Float64}}
+    names  :: Vector{String}
 end
 
-function GridCMSample(params::AbstractMatrix)
-    mat  = Matrix{Float64}(params)
+function GridCMSample(params::AbstractMatrix; names::Union{Nothing,Vector{String}} = nothing)
+    mat = Matrix{Float64}(params)
+    # Validate `names` before the grid-shape checks below, so a names-length mistake on an
+    # otherwise-valid grid doesn't get misreported by CMSample's grid/scattered fallback as
+    # "not a regular grid".
+    names_eff = _cmSampleNames(names, size(mat, 2))
     axes = [sort(unique(c)) for c in eachcol(mat)]
     n_rows = size(mat, 1)
     n_rows == prod(length.(axes)) || throw(ArgumentError(
@@ -49,16 +58,18 @@ function GridCMSample(params::AbstractMatrix)
     length(Set(Tuple(r) for r in eachrow(mat))) == n_rows || throw(ArgumentError(
         "GridCMSample: rows are not unique — not a valid Cartesian product grid"
     ))
-    return GridCMSample(mat, axes)
+    return GridCMSample(mat, axes, names_eff)
 end
 
 """
-    ScatteredCMSample(params)
+    ScatteredCMSample(params; names=nothing)
 
 CM parameter points at arbitrary (non-grid) locations.
 
 # Arguments
-- `params` — `[n_cohorts × n_cm_params]` matrix
+- `params` — `[n_cm_param_sets × n_cm_params]` matrix
+- `names` — CM parameter names, one per column of `params`; defaults to auto-generated
+  `"cm_1", "cm_2", ...` if not supplied
 
 # Note
 Interpolation support for scattered layouts is not yet implemented. When implementing,
@@ -67,16 +78,29 @@ constructor to avoid rebuilding per call for local methods (IDW, local RBF with 
 """
 struct ScatteredCMSample <: AbstractCMSample
     params :: Matrix{Float64}
+    names  :: Vector{String}
 end
 
-ScatteredCMSample(params::AbstractMatrix) = ScatteredCMSample(Matrix{Float64}(params))
+function ScatteredCMSample(params::AbstractMatrix; names::Union{Nothing,Vector{String}} = nothing)
+    mat = Matrix{Float64}(params)
+    return ScatteredCMSample(mat, _cmSampleNames(names, size(mat, 2)))
+end
+
+# Shared default-naming/validation for GridCMSample and ScatteredCMSample constructors.
+function _cmSampleNames(names::Union{Nothing,Vector{String}}, n_cm_params::Int)
+    names === nothing && return ["cm_$i" for i in 1:n_cm_params]
+    length(names) == n_cm_params || throw(ArgumentError(
+        "names has length $(length(names)) but params has $n_cm_params columns"
+    ))
+    return names
+end
 
 """
-    CMSample(params::AbstractMatrix) -> AbstractCMSample
+    CMSample(params::AbstractMatrix; names=nothing) -> AbstractCMSample
 
 Build a `GridCMSample` from `params` if its rows form a regular Cartesian-product grid,
 otherwise fall back to a `ScatteredCMSample`. This is the convenience factory consumers use
-to accept a raw `[n_cohorts × n_cm_params]` matrix without committing to a layout up front.
+to accept a raw `[n_cm_param_sets × n_cm_params]` matrix without committing to a layout up front.
 
 A fallback to `ScatteredCMSample` is reported via `@info`, since it usually indicates the
 caller expected a grid but the values do not line up (often floating-point inconsistency).
@@ -87,22 +111,25 @@ CMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])  # → GridCMSample (2×2 grid)
 CMSample([0.13 0.7; 0.42 0.2; 0.91 0.55])        # → ScatteredCMSample
 ```
 """
-function CMSample(params::AbstractMatrix)
+function CMSample(params::AbstractMatrix; names::Union{Nothing,Vector{String}} = nothing)
+    # Validate/normalize `names` up front so a names-length mistake throws cleanly here,
+    # instead of being caught below and misreported as "not a regular grid".
+    names_eff = _cmSampleNames(names, size(params, 2))
     try
-        return GridCMSample(params)
+        return GridCMSample(params; names = names_eff)
     catch e
         e isa ArgumentError || rethrow()
         @info "CM parameter matrix could not be interpreted as a regular grid; " *
               "falling back to ScatteredCMSample. If you expected a grid layout, " *
               "check for floating-point inconsistencies in your CM parameter values."
-        return ScatteredCMSample(params)
+        return ScatteredCMSample(params; names = names_eff)
     end
 end
 
 """
     _gridIndices(g::GridCMSample) -> Vector{CartesianIndex}
 
-Map each cohort row of `g.params` to its `CartesianIndex` in the grid spanned by `g.axes`.
+Map each cm_param_set row of `g.params` to its `CartesianIndex` in the grid spanned by `g.axes`.
 The `k`-th entry locates row `k` so that per-row vectors can be scattered onto a grid array.
 """
 function _gridIndices(g::GridCMSample)
@@ -118,9 +145,9 @@ end
 """
     reshapeToGrid(g::GridCMSample, v::AbstractVector) -> Array
 
-Reshape a per-cohort-row vector `v` (one value per row of `g.params`) onto the CM grid, an
+Reshape a per-cm_param_set-row vector `v` (one value per row of `g.params`) onto the CM grid, an
 array of size `length.(g.axes)`. Entry positions follow `_gridIndices(g)`, so `v[k]` lands at
-the grid cell of cohort row `k`.
+the grid cell of cm_param_set row `k`.
 
 Only defined for `GridCMSample`; scattered layouts have no grid to reshape onto.
 
@@ -132,7 +159,7 @@ reshapeToGrid(g, [11, 12, 21, 22])   # → 2×2 Matrix
 """
 function reshapeToGrid(g::GridCMSample, v::AbstractVector)
     length(v) == size(g.params, 1) || throw(ArgumentError(
-        "reshapeToGrid: length(v)=$(length(v)) must equal the number of cohort points " *
+        "reshapeToGrid: length(v)=$(length(v)) must equal the number of cm_param_sets " *
         "$(size(g.params, 1))"
     ))
     idx = _gridIndices(g)

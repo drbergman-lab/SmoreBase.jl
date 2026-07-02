@@ -37,7 +37,7 @@ struct RBFCIInterp <: AbstractCIInterpolator end
 Return a callable `get_bounds(θ_CM::AbstractVector) -> (lb::Vector, ub::Vector)` that
 interpolates SM parameter CI bounds at an arbitrary CM parameter point.
 
-`lb_table` and `ub_table` are `[n_cohorts × n_sm_params]` — rows correspond to rows of
+`lb_table` and `ub_table` are `[n_cm_param_sets × n_sm_params]` — rows correspond to rows of
 `layout.params`.
 """
 function _buildBoundsInterpolant(
@@ -50,7 +50,7 @@ function _buildBoundsInterpolant(
     n_sm = size(lb_table, 2)
 
     # Build one Interpolations.jl interpolant per SM parameter per bound.
-    # `reshapeToGrid` scatters each per-cohort-row column onto the grid.
+    # `reshapeToGrid` scatters each per-cm_param_set-row column onto the grid.
     # Stored as Vector{Any} because the concrete interpolant type varies with n_cm.
     itp_lb = Vector{Any}(undef, n_sm)
     itp_ub = Vector{Any}(undef, n_sm)

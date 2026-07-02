@@ -38,14 +38,14 @@ include("plots/fit_recipe.jl")
 # Exports — types
 export AbstractCMData, CMData
 export AbstractCMDataSlice, CMDataSlice
-export AbstractSurrogateModel, ODESurrogateModel, AnalyticalSurrogateModel
+export AbstractSurrogateModel, ODESurrogateModel, AnalyticalSurrogateModel, CustomSolverSurrogateModel
 export ConditionSpec, ParameterPrior
 export AbstractLoss, GaussianNLL, CustomLoss
 export AbstractUQMethod, ProfileLikelihood
 export SMFitProblem, SMFitResult, SMUQResult, ProfileLikelihoodResult, ProfileCurve, SampledPredictions
 
 # Exports — CMData accessors
-export n_times, n_variables, n_conditions, n_param_sets
+export n_times, n_variables, n_conditions, n_cm_param_sets
 
 # Exports — CM parameter sample layout (shared with SmoreGSA, SmoreFit)
 export AbstractCMSample, GridCMSample, ScatteredCMSample, CMSample, reshapeToGrid
