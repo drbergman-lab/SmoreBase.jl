@@ -40,32 +40,63 @@ ProfileLikelihood(;
 ) = ProfileLikelihood(n_points, confidence_level, bounds)
 
 """
-    quantifyUncertainty(problem, fitResult, method; param_set_index) -> SMUQResult
+    quantifyUncertainty(method, problem, fitResult; executor) -> Vector{ProfileLikelihoodResult}
+    quantifyUncertainty(method, problem, fitResult, cm_param_set_index::Integer) -> ProfileLikelihoodResult
+    quantifyUncertainty(method, problem, fitResult, cm_param_set_indices::AbstractVector{<:Integer}; executor) -> Vector{ProfileLikelihoodResult}
 
 Quantify uncertainty in fitted surrogate-model parameters.
 
 This is the second stage of the pipeline (`fitSurrogate` → `quantifyUncertainty` →
-`sampleSMPredictions`). The UQ algorithm is selected by `method::AbstractUQMethod`;
-dispatch on that argument is the extension point for new UQ methods — define a
-`MyMethod <: AbstractUQMethod` and add a `quantifyUncertainty(::SMFitProblem,
-::SMFitResult, ::MyMethod)` method.
+`sampleSMPredictions`). The UQ algorithm is selected by `method::AbstractUQMethod`. To add a
+new method, define `MyMethod <: AbstractUQMethod` and a `quantifyUncertainty(::MyMethod,
+::SMFitProblem, ::SMFitResult, ...)` method.
 
-The `ProfileLikelihood` method computes profile likelihood UQ for one param_set,
-returning a `ProfileLikelihoodResult`.
+Three methods, each with a fixed return type (no runtime branching on argument value within a
+single method):
+- No 4th argument: profiles **all** cm_param_sets in `problem.data`, row-aligned, and always
+  returns a `Vector` (even when there is only one cm_param_set) — the default entry point for
+  workflows with more than one cm_param_set (SmoreGSA, SmoreFit).
+- `cm_param_set_index::Integer`: profiles one cm_param_set, returning a bare `ProfileLikelihoodResult`
+  — opt in explicitly when you only want a single result.
+- `cm_param_set_indices::AbstractVector{<:Integer}`: profiles an explicit subset/order of
+  cm_param_sets; the no-argument form delegates here with `1:n_cm_param_sets(problem.data)`.
+
+The `ProfileLikelihood` method computes profile likelihood UQ via Wilks' theorem.
 
 # Arguments
+- `method::AbstractUQMethod` — UQ algorithm (e.g. `ProfileLikelihood()`)
 - `problem::SMFitProblem` — the fitting problem (model, data, prior, loss)
 - `fitResult::SMFitResult` — fitted parameters from `fitSurrogate`
-- `method::AbstractUQMethod` — UQ algorithm (e.g. `ProfileLikelihood()`)
 
 # Keyword arguments
-- `param_set_index::Int` — which param_set to profile (default: 1)
+- `executor` — controls how cm_param_sets are profiled (same semantics as `fitSurrogate`):
+  `:serial` (default), `:threads`, `:distributed`, or any callable `(f, itr) -> Vector`.
+  Ignored by the single-`cm_param_set_index` method.
+
+# Example
+```julia
+uq_all = quantifyUncertainty(ProfileLikelihood(), problem, result)        # all cm_param_sets
+uq_one = quantifyUncertainty(ProfileLikelihood(), problem, result, 1)     # just the first
+```
 """
+function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem, fitResult::SMFitResult;
+                              executor = :serial)
+    return quantifyUncertainty(method, problem, fitResult, 1:n_cm_param_sets(problem.data); executor)
+end
+
+function quantifyUncertainty(method::ProfileLikelihood, problem::SMFitProblem, fitResult::SMFitResult,
+                              cm_param_set_indices::AbstractVector{<:Integer}; executor = :serial)
+    map_fn = _resolveExecutor(executor)
+    return Vector{ProfileLikelihoodResult{Float64}}(
+        map_fn(i -> quantifyUncertainty(method, problem, fitResult, i), cm_param_set_indices)
+    )
+end
+
 function quantifyUncertainty(
+    method::ProfileLikelihood,
     problem::SMFitProblem,
     fitResult::SMFitResult,
-    method::ProfileLikelihood;
-    param_set_index::Int = 1,
+    cm_param_set_index::Integer,
 )
     n_params = length(problem.prior)
     lb = !isnothing(method.bounds) ? _lowerBounds(method.bounds) : _lowerBounds(problem.prior)
@@ -82,10 +113,10 @@ function quantifyUncertainty(
         ))
     end
 
-    p_mle      = fitResult.parameters[param_set_index, :]
-    L_star     = -fitResult.errors[param_set_index]     # errors store the objective (= -LL)
+    p_mle      = fitResult.parameters[cm_param_set_index, :]
+    L_star     = -fitResult.errors[cm_param_set_index]     # errors store the objective (= -LL)
     threshold  = L_star - 0.5 * quantile(Chisq(1), method.confidence_level)
-    data_slice = _sliceParamSet(problem.data, param_set_index)
+    data_slice = _sliceCmParamSet(problem.data, cm_param_set_index)
     conditions = _conditions(problem.data)
 
     profiles = Vector{ProfileCurve{Float64}}(undef, n_params)

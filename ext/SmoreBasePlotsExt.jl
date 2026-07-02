@@ -11,7 +11,7 @@ using Statistics
     data   = fp.data
     result = fp.result
 
-    ps = pop!(plotattributes, :param_set_index, 1)
+    ps = pop!(plotattributes, :cm_param_set_index, 1)
     ci = pop!(plotattributes, :condition_index,  1)
 
     n_v    = n_variables(data)
@@ -57,7 +57,7 @@ end
 
 Diagnostic scatter of fitted SM parameter values across all param sets.
 
-One subplot per SM parameter. X-axis: param set index (1…n_param_sets);
+One subplot per SM parameter. X-axis: param set index (1…n_cm_param_sets);
 Y-axis: fitted parameter value. Points are colored by convergence status:
 - Blue (`#0072B2`) — converged
 - Orange (`#D55E00`) — not converged

@@ -9,12 +9,12 @@ abstract type AbstractCMData end
     AbstractCMDataSlice <: AbstractCMData
 
 Abstract base type for a single-param-set view into an `AbstractCMData` container.
-A slice has no param-set axis; `n_param_sets` is not defined on this type.
+A slice has no param-set axis; `n_cm_param_sets` is not defined on this type.
 
 Custom `AbstractCMData` subtypes must implement:
 ```julia
-_sliceParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice  # always required
-n_param_sets(data::MyType) -> Int                             # required by fitSurrogate
+_sliceCmParamSet(data::MyType, pi::Int) -> AbstractCMDataSlice  # always required
+n_cm_param_sets(data::MyType) -> Int                             # required by fitSurrogate
 ```
 The following have working defaults but should be overridden when applicable:
 ```julia
@@ -25,7 +25,7 @@ _times(data::MyType) -> Union{Nothing,Vector} # default: nothing (endpoint data)
 respectively — do not implement them unless you need a more efficient specialization.
 
 For `AbstractCMDataSlice` subtypes (needed only if not returning `CMDataSlice` from
-`_sliceParamSet`):
+`_sliceCmParamSet`):
 ```julia
 _times(slice::MySlice) -> Union{Nothing,Vector}  # default: nothing; override for time-series
 _mean(slice::MySlice) -> AbstractArray           # required if using GaussianNLL
@@ -40,22 +40,22 @@ abstract type AbstractCMDataSlice <: AbstractCMData end
 
 Structured container for summary statistics from CM simulation runs used to train a surrogate model.
 
-Arrays are stored in canonical 4-D layout: `[n_times, n_variables, n_conditions, n_param_sets]`.
+Arrays are stored in canonical 4-D layout: `[n_times, n_variables, n_conditions, n_cm_param_sets]`.
 
 The axis order reflects the natural data hierarchy: a single CM run at one parameter set and
 one condition produces a `[n_times × n_variables]` matrix; conditions and parameter sets are
 the outer two axes.
 
 # Fields
-- `μ` — mean observations `[n_times, n_variables, n_conditions, n_param_sets]`
+- `μ` — mean observations `[n_times, n_variables, n_conditions, n_cm_param_sets]`
 - `σ` — pointwise noise level treated as a known standard deviation in the likelihood (same shape as `μ`);
   the caller controls the convention — pass the sample standard deviation `σ_rep` for a fixed noise
   floor, or the standard error `σ_rep/√R` if the likelihood should tighten with replicate count `R`
-- `Σ` — optional full covariance `[n_variables, n_variables, n_times, n_conditions, n_param_sets]` (`nothing` → independent)
+- `Σ` — optional full covariance `[n_variables, n_variables, n_times, n_conditions, n_cm_param_sets]` (`nothing` → independent)
 - `times` — time grid (`nothing` when the time axis is absent)
 - `variable_labels` — names of observable output variables
 - `condition_labels` — labels for experimental conditions
-- `param_set_labels` — labels for CM parameter vectors
+- `cm_param_set_labels` — labels for CM parameter vectors
 
 # Keyword constructor
 
@@ -72,7 +72,7 @@ unique kwarg whose size equals `size(A, dim)`, and the array is permuted into ca
 
 **`dim_order`:** required when any two present kwargs have the same size (ambiguous matching).
 Supply a length-N `Vector` or `Tuple` of `Symbol`s (`:times`, `:variables`, `:conditions`,
-`:param_sets`) declaring which axis occupies each array dimension. The array is then validated
+`:cm_param_sets`) declaring which axis occupies each array dimension. The array is then validated
 and permuted into canonical order.
 
 Both Unicode (`μ`, `σ`, `Σ`) and ASCII (`mean`, `sd`, `cov`) aliases are accepted.
@@ -104,13 +104,13 @@ data = CMData(μ = rand(2, 3), σ = 0.1 .* ones(2, 3),
 ```
 """
 struct CMData{T<:Real} <: AbstractCMData
-    μ::Array{T,4}                  # [n_times, n_variables, n_conditions, n_param_sets]
+    μ::Array{T,4}                  # [n_times, n_variables, n_conditions, n_cm_param_sets]
     σ::Array{T,4}
-    Σ::Union{Nothing,Array{T}}     # [n_variables, n_variables, n_times, n_conditions, n_param_sets]
+    Σ::Union{Nothing,Array{T}}     # [n_variables, n_variables, n_times, n_conditions, n_cm_param_sets]
     times::Union{Nothing,Vector{T}}
     variable_labels::Vector{String}
     condition_labels::Vector{String}
-    param_set_labels::Vector{String}
+    cm_param_set_labels::Vector{String}
 end
 
 function CMData(;
@@ -120,7 +120,7 @@ function CMData(;
     times      = nothing,
     variables  = nothing,
     conditions = nothing,
-    param_sets = nothing,
+    cm_param_sets = nothing,
     dim_order  = nothing,
 )
     _μ = _resolveRequiredAlias(μ, mean, "μ", "mean")
@@ -130,17 +130,17 @@ function CMData(;
     n_t  = _axisSize(times)
     n_v  = _axisSize(variables)
     n_c  = _axisSize(conditions)
-    n_ps = _axisSize(param_sets)
+    n_ps = _axisSize(cm_param_sets)
 
-    _μ4 = _reshapeTo4D(_μ, n_t, n_v, n_c, n_ps, times, variables, conditions, param_sets, dim_order)
-    _σ4 = _reshapeTo4D(_σ, n_t, n_v, n_c, n_ps, times, variables, conditions, param_sets, dim_order)
+    _μ4 = _reshapeTo4D(_μ, n_t, n_v, n_c, n_ps, times, variables, conditions, cm_param_sets, dim_order)
+    _σ4 = _reshapeTo4D(_σ, n_t, n_v, n_c, n_ps, times, variables, conditions, cm_param_sets, dim_order)
 
     size(_μ4) == size(_σ4) ||
         throw(ArgumentError("μ and σ must have the same shape; got $(size(_μ4)) vs $(size(_σ4))"))
 
     _var_labels  = _axisLabels(variables,  n_v,  "y")
     _cond_labels = _axisLabels(conditions, n_c,  "c")
-    _ps_labels   = _axisLabels(param_sets, n_ps, "ps")
+    _ps_labels   = _axisLabels(cm_param_sets, n_ps, "ps")
 
     !isnothing(_Σ) && _validateCovariance(_Σ, size(_μ4, 1), size(_μ4, 2), size(_μ4, 3), size(_μ4, 4))
 
@@ -188,7 +188,7 @@ end
 # automatically (by unique size) or via the explicit dim_order argument. The result is
 # permuted into canonical order and reshaped to 4-D.
 function _reshapeTo4D(A::AbstractArray, n_t, n_v, n_c, n_ps,
-                      times_kwarg, variables_kwarg, conditions_kwarg, param_sets_kwarg,
+                      times_kwarg, variables_kwarg, conditions_kwarg, cm_param_sets_kwarg,
                       dim_order)
     full_shape = (n_t, n_v, n_c, n_ps)
     N = ndims(A)
@@ -199,7 +199,7 @@ function _reshapeTo4D(A::AbstractArray, n_t, n_v, n_c, n_ps,
     if !isnothing(times_kwarg); push!(present_syms, :times);      push!(present_sizes, n_t);  end
     if !isnothing(variables_kwarg); push!(present_syms, :variables);  push!(present_sizes, n_v);  end
     if !isnothing(conditions_kwarg); push!(present_syms, :conditions); push!(present_sizes, n_c);  end
-    if !isnothing(param_sets_kwarg); push!(present_syms, :param_sets); push!(present_sizes, n_ps); end
+    if !isnothing(cm_param_sets_kwarg); push!(present_syms, :cm_param_sets); push!(present_sizes, n_ps); end
     n_present = length(present_syms)
 
     n_present == N ||
@@ -224,8 +224,8 @@ function _reshapeTo4D(A::AbstractArray, n_t, n_v, n_c, n_ps,
         _dimAxesFromSizes(A, present_dict)
     end
 
-    # Build permutation to canonical order [:times, :variables, :conditions, :param_sets]
-    canonical = [:times, :variables, :conditions, :param_sets]
+    # Build permutation to canonical order [:times, :variables, :conditions, :cm_param_sets]
+    canonical = [:times, :variables, :conditions, :cm_param_sets]
     perm = [findfirst(==(sym), dim_axes)
             for sym in canonical if haskey(present_dict, sym)]
 
@@ -286,7 +286,7 @@ end
 function _validateCovariance(Σ, n_t, n_v, n_c, n_ps)
     ndims(Σ) == 5 ||
         throw(ArgumentError(
-            "Σ must be a 5-D array [n_variables, n_variables, n_times, n_conditions, n_param_sets]; " *
+            "Σ must be a 5-D array [n_variables, n_variables, n_times, n_conditions, n_cm_param_sets]; " *
             "got $(ndims(Σ))-D"
         ))
     size(Σ) == (n_v, n_v, n_t, n_c, n_ps) ||
@@ -298,7 +298,7 @@ end
 n_times(d::CMData)      = size(d.μ, 1)
 n_variables(d::CMData)  = size(d.μ, 2)
 n_conditions(d::CMData) = size(d.μ, 3)
-n_param_sets(d::CMData) = size(d.μ, 4)
+n_cm_param_sets(d::CMData) = size(d.μ, 4)
 
 # Defaults for AbstractCMData: derived from other required accessors.
 # Custom subtypes get these for free if they implement _times and _conditions.
@@ -348,13 +348,13 @@ _conditions(::AbstractCMData) = ConditionSpec()
 _conditions(d::CMData)        = ConditionSpec(d.condition_labels)
 
 """
-    _paramSetLabels(d::AbstractCMData) -> Union{Nothing, Vector{String}}
+    _cmParamSetLabels(d::AbstractCMData) -> Union{Nothing, Vector{String}}
 
 Return the param-set labels for `d`, or `nothing` if unlabelled.
-Default returns `nothing`; `CMData` overrides with its `param_set_labels` field.
+Default returns `nothing`; `CMData` overrides with its `cm_param_set_labels` field.
 """
-_paramSetLabels(::AbstractCMData) = nothing
-_paramSetLabels(d::CMData)        = d.param_set_labels
+_cmParamSetLabels(::AbstractCMData) = nothing
+_cmParamSetLabels(d::CMData)        = d.cm_param_set_labels
 
 # ── CMDataSlice ───────────────────────────────────────────────────────────────
 
@@ -364,7 +364,7 @@ _paramSetLabels(d::CMData)        = d.param_set_labels
 A zero-copy view into a single param-set of a `CMData` container. Fields `μ`, `σ`,
 and (optionally) `Σ` are `SubArray` views into the parent arrays — no data is copied.
 
-Created by `_sliceParamSet(data::CMData, pi)`.
+Created by `_sliceCmParamSet(data::CMData, pi)`.
 
 # Fields
 - `μ` — mean view `[n_times, n_variables, n_conditions]`
@@ -372,7 +372,7 @@ Created by `_sliceParamSet(data::CMData, pi)`.
 - `Σ` — optional full-covariance view `[n_variables, n_variables, n_times, n_conditions]`, or `nothing`
 - `times` — shared reference to the parent time grid, or `nothing`
 - `variable_labels`, `condition_labels` — shared references to parent label vectors, or `nothing`
-- `param_set_label` — label string for this param-set, or `nothing`
+- `cm_param_set_label` — label string for this param-set, or `nothing`
 """
 struct CMDataSlice{T<:Real} <: AbstractCMDataSlice
     μ::AbstractArray{T,3}                       # [n_times, n_variables, n_conditions]
@@ -381,11 +381,11 @@ struct CMDataSlice{T<:Real} <: AbstractCMDataSlice
     times::Union{Nothing,Vector{T}}
     variable_labels::Union{Nothing,Vector{String}}
     condition_labels::Union{Nothing,Vector{String}}
-    param_set_label::Union{Nothing,String}
+    cm_param_set_label::Union{Nothing,String}
 end
 
 """
-    _sliceParamSet(data::CMData, pi::Int) -> CMDataSlice
+    _sliceCmParamSet(data::CMData, pi::Int) -> CMDataSlice
 
 Return a zero-copy view of `data` restricted to param-set index `pi`.
 
@@ -393,7 +393,7 @@ Custom `AbstractCMData` subtypes must implement their own method returning an
 `AbstractCMDataSlice`. The slice is passed to `_computeLoss` and to user-supplied
 `CustomLoss` functions as the `data` argument.
 """
-function _sliceParamSet(data::CMData, pi::Int)
+function _sliceCmParamSet(data::CMData, pi::Int)
     return CMDataSlice(
         @view(data.μ[:, :, :, pi]),
         @view(data.σ[:, :, :, pi]),
@@ -401,7 +401,7 @@ function _sliceParamSet(data::CMData, pi::Int)
         _times(data),
         _variableLabels(data),
         _conditionLabels(data),
-        _paramSetLabels(data)[pi],
+        _cmParamSetLabels(data)[pi],
     )
 end
 

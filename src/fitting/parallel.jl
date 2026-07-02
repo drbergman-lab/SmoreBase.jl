@@ -1,12 +1,12 @@
-# Fit the surrogate model for a single param_set.
+# Fit the surrogate model for a single cm_param_set.
 # Returns (fitted_params, error_val, converged, raw_result).
-function _fitOneParamSet(
+function _fitOneCmParamSet(
     problem::SMFitProblem,
     p0_row::AbstractVector,
     optimOptions::NamedTuple,
-    param_set_idx::Int,
+    cm_param_set_idx::Int,
 )
-    data_slice = _sliceParamSet(problem.data, param_set_idx)
+    data_slice = _sliceCmParamSet(problem.data, cm_param_set_idx)
     conditions = _conditions(problem.data)
     obj    = _buildObjective(problem.sm, data_slice, conditions, problem.loss)
     opt_fn = OptimizationFunction(obj, Optimization.AutoForwardDiff())
@@ -18,8 +18,8 @@ function _fitOneParamSet(
     return sol.u, sol.objective, converged, sol
 end
 
-# Fit all param_sets using the provided map_fn (a resolved callable).
-function _fitAllParamSets(
+# Fit all cm_param_sets using the provided map_fn (a resolved callable).
+function _fitAllCmParamSets(
     problem::SMFitProblem,
     P0::AbstractMatrix,
     optimOptions::NamedTuple,
@@ -29,7 +29,7 @@ function _fitAllParamSets(
     n_params = size(P0, 2)
 
     raw = map_fn(1:n_ps) do i
-        _fitOneParamSet(problem, P0[i, :], optimOptions, i)
+        _fitOneCmParamSet(problem, P0[i, :], optimOptions, i)
     end
 
     params      = Matrix{Float64}(undef, n_ps, n_params)

@@ -19,7 +19,7 @@ Experimental conditions are derived automatically from the data via `_conditions
 problem = SMFitProblem(sm, data, prior)                        # GaussianNLL by default
 problem = SMFitProblem(sm, data, prior; loss = CustomLoss(fn))
 result  = fitSurrogate(problem, P0)
-uq      = quantifyUncertainty(problem, result, ProfileLikelihood())
+uq      = quantifyUncertainty(ProfileLikelihood(), problem, result, 1)   # single cm_param_set
 samples = sampleSMPredictions(problem, uq)
 ```
 """

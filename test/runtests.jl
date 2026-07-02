@@ -62,7 +62,7 @@ end
     @test n_times(data_u) == 6
     @test n_variables(data_u) == 1
     @test n_conditions(data_u) == 1
-    @test n_param_sets(data_u) == 1
+    @test n_cm_param_sets(data_u) == 1
     @test data_u.condition_labels == ["c1"]
     @test data_u.variable_labels  == ["y1"]
 
@@ -82,23 +82,23 @@ end
         μ = rand(6, 1, 3, 2), σ = 0.1 .* ones(6, 1, 3, 2), times = t,
         variables  = 1,
         conditions = ["ctrl", "low", "high"],
-        param_sets = ["θ₁", "θ₂"],
+        cm_param_sets = ["θ₁", "θ₂"],
     )
     @test n_times(data_4d) == 6
     @test n_conditions(data_4d) == 3
-    @test n_param_sets(data_4d) == 2
+    @test n_cm_param_sets(data_4d) == 2
 
     # 2-D [n_times × n_variables]: variables kwarg present
     data_2d = CMData(μ = rand(6, 2), σ = 0.1 .* ones(6, 2), times = t,
                      variables = ["tumor", "immune"])
     @test n_variables(data_2d) == 2
     @test n_conditions(data_2d) == 1
-    @test n_param_sets(data_2d) == 1
+    @test n_cm_param_sets(data_2d) == 1
 
-    # size mismatch: param_sets says n=1 but array dim has size 3 → error
+    # size mismatch: cm_param_sets says n=1 but array dim has size 3 → error
     @test_throws ArgumentError CMData(
         μ = rand(6, 3), σ = ones(6, 3), times = t,
-        param_sets = ["only_one"],
+        cm_param_sets = ["only_one"],
     )
 end
 
@@ -107,31 +107,31 @@ end
 
     # 1-D (6,): only times present
     d = CMData(μ = rand(6), σ = ones(6), times = t)
-    @test n_times(d) == 6 && n_variables(d) == 1 && n_conditions(d) == 1 && n_param_sets(d) == 1
+    @test n_times(d) == 6 && n_variables(d) == 1 && n_conditions(d) == 1 && n_cm_param_sets(d) == 1
 
     # 2-D (6, 2): times + variables — auto-matched by distinct sizes
     d = CMData(μ = rand(6, 2), σ = ones(6, 2), times = t, variables = 2)
-    @test n_times(d) == 6 && n_variables(d) == 2 && n_conditions(d) == 1 && n_param_sets(d) == 1
+    @test n_times(d) == 6 && n_variables(d) == 2 && n_conditions(d) == 1 && n_cm_param_sets(d) == 1
 
     # 2-D (6, 3): times + conditions
     d = CMData(μ = rand(6, 3), σ = ones(6, 3), times = t,
                conditions = ["ctrl", "low", "high"])
-    @test n_times(d) == 6 && n_variables(d) == 1 && n_conditions(d) == 3 && n_param_sets(d) == 1
+    @test n_times(d) == 6 && n_variables(d) == 1 && n_conditions(d) == 3 && n_cm_param_sets(d) == 1
 
-    # 2-D (6, 4): times + param_sets
-    d = CMData(μ = rand(6, 4), σ = ones(6, 4), times = t, param_sets = 4)
-    @test n_times(d) == 6 && n_variables(d) == 1 && n_conditions(d) == 1 && n_param_sets(d) == 4
+    # 2-D (6, 4): times + cm_param_sets
+    d = CMData(μ = rand(6, 4), σ = ones(6, 4), times = t, cm_param_sets = 4)
+    @test n_times(d) == 6 && n_variables(d) == 1 && n_conditions(d) == 1 && n_cm_param_sets(d) == 4
 
     # 3-D (6, 2, 3): times + variables + conditions — auto-matched
     d = CMData(μ = rand(6, 2, 3), σ = ones(6, 2, 3), times = t,
                variables = ["A", "B"], conditions = ["ctrl", "low", "high"])
-    @test n_times(d) == 6 && n_variables(d) == 2 && n_conditions(d) == 3 && n_param_sets(d) == 1
+    @test n_times(d) == 6 && n_variables(d) == 2 && n_conditions(d) == 3 && n_cm_param_sets(d) == 1
 
     # 3-D (6, 2, 2): repeated sizes → dim_order required
     d = CMData(μ = rand(6, 2, 2), σ = ones(6, 2, 2), times = t,
-               conditions = ["ctrl", "trt"], param_sets = 2,
-               dim_order = [:times, :conditions, :param_sets])
-    @test n_times(d) == 6 && n_conditions(d) == 2 && n_param_sets(d) == 2
+               conditions = ["ctrl", "trt"], cm_param_sets = 2,
+               dim_order = [:times, :conditions, :cm_param_sets])
+    @test n_times(d) == 6 && n_conditions(d) == 2 && n_cm_param_sets(d) == 2
 
     # Non-canonical input order: [conditions × times] → dim_order resolves + permutes
     d = CMData(μ = rand(3, 6), σ = ones(3, 6), times = t,
@@ -152,16 +152,16 @@ end
 
     # times=nothing: time axis absent, first dim is variables
     d = CMData(μ = rand(3), σ = ones(3), variables = 3)
-    @test n_times(d) == 1 && n_variables(d) == 3 && n_conditions(d) == 1 && n_param_sets(d) == 1
+    @test n_times(d) == 1 && n_variables(d) == 3 && n_conditions(d) == 1 && n_cm_param_sets(d) == 1
     @test d.times === nothing
 
     # times=nothing: 2-D [variables × conditions]
     d = CMData(μ = rand(2, 4), σ = ones(2, 4), variables = 2, conditions = 4)
     @test n_times(d) == 1 && n_variables(d) == 2 && n_conditions(d) == 4
 
-    # times=nothing: 1-D with param_sets only
-    d = CMData(μ = rand(5), σ = ones(5), param_sets = 5)
-    @test n_times(d) == 1 && n_variables(d) == 1 && n_conditions(d) == 1 && n_param_sets(d) == 5
+    # times=nothing: 1-D with cm_param_sets only
+    d = CMData(μ = rand(5), σ = ones(5), cm_param_sets = 5)
+    @test n_times(d) == 1 && n_variables(d) == 1 && n_conditions(d) == 1 && n_cm_param_sets(d) == 5
 end
 
 # ── AnalyticalSurrogateModel / _evaluate ──────────────────────────────────────
@@ -225,18 +225,60 @@ end
     A_pre = SmoreBase._evaluate(sm_pre, t, p, "default")
     @test all(A_pre[2:end] .> A[2:end])  # later times grow faster with doubled rate
 
-    # custom_solve_fn must receive the PRE-processed p (and condition).
-    captured = Ref{Vector{Float64}}()
-    sm_custom = ODESurrogateModel(
-        ode_fn          = ode_fn,
-        y0              = [0.01],
-        solver          = Tsit5(),
-        pre_processor   = (p, c) -> ([p[1] * 2, p[2]], c),
-        custom_solve_fn = (sm, t, p, c, y0) -> (captured[] = p; reshape(fill(p[1], length(t)), :, 1)),
+    # t0: default is 0.0, so y0 is the state at time 0 regardless of the first requested t.
+    sm_t0 = ODESurrogateModel(ode_fn = ode_fn, y0 = [0.01], solver = Tsit5())
+    @test sm_t0.t0 == 0.0
+    A_from_t1  = SmoreBase._evaluate(sm_t0, [1.0, 2.0], p, "default")
+    A_from_0   = SmoreBase._evaluate(sm_t0, [0.0, 1.0, 2.0], p, "default")
+    @test A_from_t1 ≈ A_from_0[2:end, :]   # same trajectory, y0 always anchored at t=0
+
+    # Custom t0: shifting t0 shifts which time y0 corresponds to. With a pure exponential
+    # decay du/dt = -k*u, the analytic solution is u(t) = y0 * exp(-k*(t - t0)).
+    decay_fn = (du, u, p, t) -> (du[1] = -p[1] * u[1])
+    sm_shifted = ODESurrogateModel(ode_fn = decay_fn, y0 = [2.0], solver = Tsit5(), t0 = 2.0,
+                                    abstol = 1e-10, reltol = 1e-10)
+    t_shifted = [2.0, 3.0, 4.0]
+    A_shifted = SmoreBase._evaluate(sm_shifted, t_shifted, [0.3], "default")
+    @test vec(A_shifted) ≈ 2.0 .* exp.(-0.3 .* (t_shifted .- 2.0)) atol = 1e-6
+
+    # t0/abstol/reltol accept any Real (e.g. Int literals), not just Float64, and store Float64.
+    sm_int_kwargs = ODESurrogateModel(ode_fn = ode_fn, y0 = [0.01], solver = Tsit5(),
+                                       t0 = 0, abstol = 1, reltol = 1)
+    @test sm_int_kwargs.t0 === 0.0
+    @test sm_int_kwargs.abstol === 1.0
+    @test sm_int_kwargs.reltol === 1.0
+end
+
+@testset "CustomSolverSurrogateModel" begin
+    t = [0.0, 0.5, 1.0, 2.0]
+
+    sm = CustomSolverSurrogateModel(
+        solve_fn = (t, p, _c, y0) -> reshape(y0[1] .+ p[1] .* t, :, 1),
+        y0       = [0.01],
     )
-    A_custom = SmoreBase._evaluate(sm_custom, t, p, "default")
-    @test captured[] == [1.0, 5.0]      # 0.5 * 2
-    @test all(A_custom .≈ 1.0)
+    A = SmoreBase._evaluate(sm, t, [2.0], "default")
+    @test A isa AbstractMatrix
+    @test vec(A) ≈ 0.01 .+ 2.0 .* t
+
+    # pre_processor must be applied before solve_fn is called, and solve_fn receives y0.
+    captured = Ref{Vector{Float64}}()
+    sm_pre = CustomSolverSurrogateModel(
+        solve_fn      = (t, p, c, y0) -> (captured[] = p; reshape(fill(p[1] + y0[1], length(t)), :, 1)),
+        y0            = [0.01],
+        pre_processor = (p, c) -> ([p[1] * 2, ], c),
+    )
+    A_pre = SmoreBase._evaluate(sm_pre, t, [3.0], "x")
+    @test captured[] == [6.0]      # 3.0 * 2
+    @test all(A_pre .≈ 6.01)
+
+    # post_processor: multiply by 2
+    sm_post = CustomSolverSurrogateModel(
+        solve_fn       = (t, p, c, y0) -> ones(length(t), 1),
+        y0             = [0.0],
+        post_processor = A -> A .* 2,
+    )
+    A_post = SmoreBase._evaluate(sm_post, t, [1.0], "x")
+    @test all(A_post .≈ 2.0)
 end
 
 # ── Loss functions ─────────────────────────────────────────────────────────────
@@ -245,7 +287,7 @@ end
     t    = collect(0.0:1.0:5.0)
     μ_true = _logistic(t, [0.5, 5.0], nothing)  # [6 × 1] matrix (SM output format)
     data = CMData(μ = vec(μ_true), σ = 0.1 .* ones(6), times = t)
-    slice = SmoreBase._sliceParamSet(data, 1)
+    slice = SmoreBase._sliceCmParamSet(data, 1)
 
     # Exact prediction → loss = 0.5 * sum(log(2π σ²))
     L_exact = SmoreBase._computeLoss(GaussianNLL(), μ_true, slice, 1)
@@ -260,7 +302,7 @@ end
 @testset "CustomLoss" begin
     t    = collect(0.0:1.0:5.0)
     data = CMData(μ = rand(6), σ = ones(6), times = t)
-    slice = SmoreBase._sliceParamSet(data, 1)
+    slice = SmoreBase._sliceCmParamSet(data, 1)
     custom = CustomLoss((A, d, ki) -> 42.0)
     @test SmoreBase._computeLoss(custom, zeros(6, 1), slice, 1) == 42.0
 end
@@ -291,10 +333,10 @@ end
     @test length(cs) == 1
     @test cs[1] == "c1"
 
-    # multi-condition data (dim_order needed because variables=1 and param_sets=1 have same size)
+    # multi-condition data (dim_order needed because variables=1 and cm_param_sets=1 have same size)
     data3 = CMData(μ = rand(6, 1, 3, 1), σ = 0.1 .* ones(6, 1, 3, 1), times = t,
-                   variables = 1, conditions = ["ctrl", "low", "high"], param_sets = 1,
-                   dim_order = [:times, :variables, :conditions, :param_sets])
+                   variables = 1, conditions = ["ctrl", "low", "high"], cm_param_sets = 1,
+                   dim_order = [:times, :variables, :conditions, :cm_param_sets])
     cs3 = SmoreBase._conditions(data3)
     @test length(cs3) == 3
     @test cs3[2] == "low"
@@ -335,6 +377,15 @@ end
 
     # Dimension validation
     @test_throws ArgumentError fitSurrogate(prob, [0.5 5.0 1.0])
+
+    # Vector P0 broadcasts to every cm_param_set's row — matches the equivalent matrix call.
+    data_multi = CMData(μ = repeat(vec(μ_true), 1, 3), σ = 0.05 .* ones(length(μ_true), 3), times = t,
+                          cm_param_sets = 3)
+    prob_multi = SMFitProblem(sm, data_multi, prior)
+    result_vec  = fitSurrogate(prob_multi, [0.5, 5.0])
+    result_mat  = fitSurrogate(prob_multi, repeat([0.5 5.0], 3, 1))
+    @test result_vec.parameters ≈ result_mat.parameters
+    @test size(result_vec.parameters) == (3, 2)
 end
 
 # ── Profile likelihood ────────────────────────────────────────────────────────
@@ -353,7 +404,7 @@ end
     result = fitSurrogate(prob, P0)
 
     method = ProfileLikelihood(n_points = 20, confidence_level = 0.95)
-    uq     = quantifyUncertainty(prob, result, method)
+    uq     = quantifyUncertainty(method, prob, result, 1)
 
     @test uq isa ProfileLikelihoodResult
     @test length(uq.profiles) == 2
@@ -380,7 +431,7 @@ end
         custom_loss = CustomLoss((A, d, ki) -> SmoreBase._computeLoss(GaussianNLL(), A, d, ki))
         prob_c  = SMFitProblem(sm, data, prior; loss = custom_loss)
         result_c = fitSurrogate(prob_c, P0)
-        uq_c     = quantifyUncertainty(prob_c, result_c, ProfileLikelihood(n_points = 20))
+        uq_c     = quantifyUncertainty(ProfileLikelihood(n_points = 20), prob_c, result_c, 1)
         for pc in uq_c.profiles
             mle_val = result_c.parameters[1, pc.parameter_index]
             mle_idx = findfirst(≈(mle_val; atol = 1e-10), pc.profile_values)
@@ -396,7 +447,7 @@ end
     )
     prob_ub   = SMFitProblem(sm, data, prior_unbounded)
     result_ub = fitSurrogate(prob_ub, P0)
-    @test_warn r"unbounded" @test_throws ArgumentError quantifyUncertainty(prob_ub, result_ub, ProfileLikelihood(n_points = 5))
+    @test_warn r"unbounded" @test_throws ArgumentError quantifyUncertainty(ProfileLikelihood(n_points = 5), prob_ub, result_ub, 1)
 
     # Single-parameter SM: covers the isempty(free_idx) branch in _profileLL,
     # where fixing the only parameter leaves nothing to re-optimize.
@@ -411,13 +462,52 @@ end
         prob1   = SMFitProblem(sm1, data1, prior1)
         result1 = fitSurrogate(prob1, reshape([0.4], 1, 1))
 
-        uq1 = quantifyUncertainty(prob1, result1, ProfileLikelihood(n_points = 10))
+        uq1 = quantifyUncertainty(ProfileLikelihood(n_points = 10), prob1, result1, 1)
         @test uq1 isa ProfileLikelihoodResult
         @test length(uq1.profiles) == 1
         pc1 = uq1.profiles[1]
         @test pc1.ci_lower !== nothing
         @test pc1.ci_upper !== nothing
         @test pc1.ci_lower < result1.parameters[1, 1] < pc1.ci_upper
+    end
+end
+
+@testset "quantifyUncertainty batched over cm_param_sets" begin
+    # 3 cm_param_sets: same shape/true params at every cm_param_set, different SM fits per column.
+    t = collect(0.0:5.0:50.0)
+    p_true = [0.6, 4.0]
+    μ_true = vec(_logistic(t, p_true, nothing))
+    n_ps   = 3
+    data   = CMData(μ = repeat(μ_true, 1, n_ps), σ = 0.05 .* ones(length(μ_true), n_ps), times = t,
+                     cm_param_sets = n_ps)
+
+    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
+    prob   = SMFitProblem(sm, data, prior)
+    result = fitSurrogate(prob, [0.5, 5.0])   # vector P0, broadcasts to all 3 cm_param_sets
+    method = ProfileLikelihood(n_points = 15, confidence_level = 0.95)
+
+    # No index -> Vector, one per cm_param_set, in order.
+    uq_all = quantifyUncertainty(method, prob, result)
+    @test uq_all isa Vector{<:ProfileLikelihoodResult}
+    @test length(uq_all) == n_ps
+
+    # Explicit single index -> bare ProfileLikelihoodResult, matching the corresponding entry above.
+    uq_2 = quantifyUncertainty(method, prob, result, 2)
+    @test uq_2 isa ProfileLikelihoodResult
+    @test uq_2.profiles[1].profile_values == uq_all[2].profiles[1].profile_values
+    @test uq_2.profiles[1].log_likelihoods == uq_all[2].profiles[1].log_likelihoods
+
+    # Explicit subset/order -> Vector, respecting the requested order.
+    uq_subset = quantifyUncertainty(method, prob, result, [3, 1])
+    @test length(uq_subset) == 2
+    @test uq_subset[1].profiles[1].profile_values == uq_all[3].profiles[1].profile_values
+    @test uq_subset[2].profiles[1].profile_values == uq_all[1].profiles[1].profile_values
+
+    # Custom callable executor gives the same result as the default :serial path.
+    uq_all_map = quantifyUncertainty(method, prob, result; executor = map)
+    for i in 1:n_ps
+        @test uq_all_map[i].profiles[1].log_likelihoods == uq_all[i].profiles[1].log_likelihoods
     end
 end
 
@@ -434,7 +524,7 @@ end
     prob   = SMFitProblem(sm, data, prior)
     P0     = [0.5 5.0]
     result = fitSurrogate(prob, P0)
-    uq     = quantifyUncertainty(prob, result, ProfileLikelihood(n_points = 20))
+    uq     = quantifyUncertainty(ProfileLikelihood(n_points = 20), prob, result, 1)
 
     samples = sampleSMPredictions(prob, uq; nSamples = 50)
 
@@ -532,7 +622,7 @@ end
     # SMFitResult: one subplot per parameter × one series per convergence state
     rds = RecipesBase.apply_recipe(Dict{Symbol,Any}(), result)
     @test !isempty(rds)
-    # 1 param_set all converged → 2 parameters × 1 converged series = 2 RecipeData
+    # 1 cm_param_set all converged → 2 parameters × 1 converged series = 2 RecipeData
     @test length(rds) == 2
 
     # SMFitPlot: one series per output variable (fit line + data scatter = 2 series for 1 variable)
@@ -550,7 +640,7 @@ end
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])
-    uq     = quantifyUncertainty(prob, result, ProfileLikelihood(n_points = 20))
+    uq     = quantifyUncertainty(ProfileLikelihood(n_points = 20), prob, result, 1)
 
     # ProfileLikelihoodResult: delegates to ProfileCurve recipe → 2 RecipeData (one per parameter)
     rds = RecipesBase.apply_recipe(Dict{Symbol,Any}(), uq)
@@ -576,7 +666,7 @@ end
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])
-    uq     = quantifyUncertainty(prob, result, ProfileLikelihood(n_points = 20))
+    uq     = quantifyUncertainty(ProfileLikelihood(n_points = 20), prob, result, 1)
     samples = sampleSMPredictions(prob, uq; nSamples = 30)
 
     # 1 output variable → 1 ribbon series
@@ -596,10 +686,17 @@ end
     @test g isa GridCMSample
     @test g.axes[1] == [1.0, 2.0]
     @test g.axes[2] == [0.1, 0.2]
+    @test g.names == ["cm_1", "cm_2"]   # auto-generated default
+
+    # Custom names
+    g_named = GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]; names = ["cm_r", "cm_K"])
+    @test g_named.names == ["cm_r", "cm_K"]
+    @test_throws ArgumentError GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]; names = ["only_one"])
 
     # 1-D grid
     g1 = GridCMSample([1.0; 2.0; 3.0;;])
     @test g1.axes == [[1.0, 2.0, 3.0]]
+    @test g1.names == ["cm_1"]
 
     # Non-grid rows → ArgumentError
     @test_throws ArgumentError GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1])  # missing (2.0,0.2)
@@ -609,12 +706,25 @@ end
     s = ScatteredCMSample([0.13 0.7; 0.42 0.2; 0.91 0.55])
     @test s isa ScatteredCMSample
     @test size(s.params) == (3, 2)
+    @test s.names == ["cm_1", "cm_2"]
+    s_named = ScatteredCMSample([0.13 0.7; 0.42 0.2; 0.91 0.55]; names = ["cm_a", "cm_b"])
+    @test s_named.names == ["cm_a", "cm_b"]
+    @test_throws ArgumentError ScatteredCMSample([0.13 0.7; 0.42 0.2]; names = ["only_one"])
 
     # CMSample factory: grid path
     @test CMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]) isa GridCMSample
+    @test CMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]; names = ["cm_r", "cm_K"]).names == ["cm_r", "cm_K"]
     # CMSample factory: scattered fallback (suppress the @info)
     sc = @test_logs (:info,) match_mode=:any CMSample([0.13 0.7; 0.42 0.2; 0.91 0.55])
     @test sc isa ScatteredCMSample
+    @test sc.names == ["cm_1", "cm_2"]
+
+    # A bad `names` length must throw cleanly, with no misleading "not a regular grid" @info
+    # (regression: the try/catch inside CMSample used to catch this ArgumentError too and
+    # log the grid-fallback message before ScatteredCMSample re-threw the same error).
+    @test_logs @test_throws ArgumentError CMSample(
+        [1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2]; names = ["only_one"],
+    )
 
     # reshapeToGrid round-trip: v[k] lands at the grid cell of row k
     # rows are (1,0.1),(1,0.2),(2,0.1),(2,0.2); axes [1,2]×[0.1,0.2]
@@ -634,13 +744,13 @@ end
 # ── CI-bound interpolation across CM parameter space ───────────────────────────
 
 @testset "CI bound interpolation" begin
-    # 1-D grid: 3 cohort points, 1 SM parameter
+    # 1-D grid: 3 cm_param_sets, 1 SM parameter
     g1 = GridCMSample([1.0; 2.0; 3.0;;])
     lb1 = reshape([0.10, 0.20, 0.30], 3, 1)
     ub1 = reshape([0.50, 0.55, 0.60], 3, 1)
     f1 = SmoreBase._buildBoundsInterpolant(g1, lb1, ub1, LinearCIInterp())
 
-    # Exact reproduction at cohort nodes
+    # Exact reproduction at cm_param_set nodes
     @test f1([1.0]) == ([0.10], [0.50])
     @test f1([2.0]) == ([0.20], [0.55])
     @test f1([3.0]) == ([0.30], [0.60])
@@ -649,7 +759,7 @@ end
     @test lb_q[1] ≈ 0.15
     @test ub_q[1] ≈ 0.525
 
-    # 2-D grid: 2 SM parameters, 4 cohort points (2×2 grid in CM space)
+    # 2-D grid: 2 SM parameters, 4 cm_param_sets (2×2 grid in CM space)
     g2 = GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])
     lb2 = [0.1 1.0;
            0.2 1.5;

@@ -361,3 +361,124 @@ documentation.
 ### Status
 Implemented on `feature/drop-makie-ext`. SmoreBase and SmoreGSA test suites pass; SmoreExamples
 notebooks verified headless. Not committed — branches ready for review.
+
+---
+
+## Session: ODE SM refinements + batched profile-likelihood UQ (2026-07-02)
+
+### Goal
+Four independent code-review findings, bundled into one branch since they touch adjacent
+surrogate-model / UQ code: (b) `custom_solve_fn` doesn't belong on `ODESurrogateModel`, (c) the
+default ODE solve anchors `tspan` at `t[1]` instead of `t=0`, (d) `fitSurrogate` requires a
+matrix `P0` even for a single guess, (g) `quantifyUncertainty` only profiles one CM param_set at
+a time, forcing callers with more than one (SmoreGSA, SmoreFit, SmoreExamples) to hand-roll a
+per-param_set fit+profile loop.
+
+### Decisions
+
+**b — new `CustomSolverSurrogateModel` type, not a field.**
+`custom_solve_fn` left `ode_fn`, `solver`, `abstol`, `reltol` unused whenever it was set. Split
+into its own `AbstractSurrogateModel` subtype (`solve_fn`, `y0`, `pre_processor`,
+`post_processor`). Since the custom-solve path never calls into `OrdinaryDiffEq`, its
+`_evaluate` lives in the main package next to `AnalyticalSurrogateModel`, not in
+`ext/SmoreBaseOrdinaryDiffEqExt.jl` — one fewer thing gated behind the weak dep.
+
+**c — `t0` is a constructor kwarg, not a per-call kwarg.**
+`_evaluate`'s signature is fixed across package-extension dispatch, so `t0` had to be a field
+(`t0::Float64 = 0.0`) rather than threaded through call sites. `tspan` becomes `(sm.t0,
+Float64(t[end]))`; previously `(Float64(t[1]), Float64(t[end]))` silently mis-anchored `y0`
+whenever the first observation wasn't at `t=0`.
+
+**e (pulled forward from a related finding) — `names` on `AbstractCMSample`, not `ParameterPrior`.**
+While designing (g), we also settled where CM parameter names should live for consumers that
+only need labels (not distributions) — SmoreFit's `buildPosterior` was requiring a whole
+`ParameterPrior` just to extract `.names`. Added `names::Vector{String}` to `GridCMSample` /
+`ScatteredCMSample` (auto-generated `"cm_1", ...` default). SmoreGSA's `runSensitivity` keeps its
+separate `cm_prior` argument — there it's load-bearing (inverse-CDF sampling), not just a label
+source, so no change needed on that side.
+
+**g — three `quantifyUncertainty` methods, not one method with a `Union` default.**
+Rejected an initial design of `cm_param_set_index::Union{Int,Colon} = 1` with a runtime branch
+inside one method body — mixes return types (`ProfileLikelihoodResult` vs `Vector`) under one
+signature, which is a type-instability smell. Settled on genuine multiple dispatch instead, with
+`method` moved to the **first** argument (matching SmoreGSA's `_runSensitivity(method, f, n_cm)`
+convention, and marking `method` as the intended extension point for future `AbstractUQMethod`
+subtypes):
+- `quantifyUncertainty(method, problem, fitResult; executor=:serial)` — no index; **new default**,
+  profiles all cm_param_sets, returns `Vector{ProfileLikelihoodResult}`.
+- `quantifyUncertainty(method, problem, fitResult, i::Integer)` — single result, opt-in.
+- `quantifyUncertainty(method, problem, fitResult, indices::AbstractVector{<:Integer}; executor=:serial)`
+  — explicit subset/order; the no-arg form delegates here with `1:n_cm_param_sets(problem.data)`.
+- Rejected an explicit `::Colon` dispatch method (`quantifyUncertainty(..., :)`) as redundant —
+  the no-arg call already is that path, and unlike `_runSensitivity` (an internal helper with no
+  bare-call ergonomic default to preserve), there's no benefit to spelling `:` out.
+- Reuses `_resolveExecutor` from `fitting/parallel.jl` so profiling many CM param_sets at once
+  gets `:threads`/`:distributed` for free — profiling a CM param_set is `n_params × n_points`
+  re-optimizations, more expensive than the fit itself.
+
+### Deferred
+Letting `pre_processor` alter `y0` (not just `p`/`condition`) — e.g. a "condition" like
+immunotherapy changing an initial compartment value rather than a parameter. Logged as a
+"Future (not in v0)" item in PRD.md under SurrogateModel Types; not implemented this session.
+
+### Breaking changes (accepted deliberately — pre-1.0, and touching every call site anyway)
+- `ODESurrogateModel` loses `custom_solve_fn`/its `Solve` type param (confirmed unused outside
+  SmoreBase by repo-wide grep across SmoreFit/SmoreGSA/SmoreExamples).
+- `quantifyUncertainty`'s argument order changes (`method` first) and its default/no-index call
+  now returns a `Vector` (length 1 for single-cm_param_set data) instead of a bare
+  `ProfileLikelihoodResult`. ~10 call sites in `test/runtests.jl` need updating in this session;
+  SmoreExamples' two pipeline notebooks need updating in a follow-up session (they also drop the
+  per-param_set `cohort_uq`/`_cohortUQ` closures now that batching is native).
+- `buildPosterior` (SmoreFit, separate repo/session) drops its `cm_prior` argument in favor of
+  `cm_names` defaulting from `cm_sample.names`.
+
+### Cross-repo follow-ups (tracked, not part of this branch)
+- **SmoreGSA**: reorder its own `_runSensitivity(f, n_cm, method)` → `(method, f, n_cm)` — same
+  "method first" rationale, independent of everything above.
+- **SmoreFit**: `buildPosterior` signature change described above; depends on the `names` field
+  landing here first.
+- **SmoreExamples**: rewrite `logistic_growth_pipeline.jl` and `cm_posterior_pipeline.jl`
+  CM-param_set sections to use batched `fitSurrogate` + `quantifyUncertainty(method, problem,
+  result)` in place of the hand-rolled per-param_set loops; fix a wording bug in
+  `logistic_growth_pipeline.jl`
+  §1 ("treat the logistic equation itself as the SM" → should say **CM**, describing the
+  synthetic-data stand-in, not the fitted object).
+
+### Status
+In progress on `feature/ode-sm-and-batched-uq`.
+
+---
+
+## Session: `param_set` → `cm_param_set` rename (2026-07-02)
+
+### Goal
+Reviewing the batched-UQ work above surfaced a naming ambiguity: SmoreGSA and SmoreFit had been
+saying "cohort point" for the same thing SmoreBase calls a `param_set` (one CM parameter
+vector). The original 2026-05-19 init session (see above, "cohort" → "param_set" throughout)
+already settled on one term over the other, but didn't anticipate this package's fitting/UQ
+pipeline also needing to talk about *SM* parameters in the same breath — `fitSurrogate`,
+`quantifyUncertainty`, and friends operate over both a CM `param_set` axis and an SM parameter
+vector at the same time, and "param_set" alone doesn't say which.
+
+### Decision
+Renamed throughout: `param_set(s)` → `cm_param_set(s)`, `ParamSet(s)` → `CmParamSet(s)` (camelCase
+internals), including the exported API — `n_param_sets` → `n_cm_param_sets`,
+`param_set_index`/`param_set_indices` → `cm_param_set_index`/`cm_param_set_indices`,
+`param_set_labels` → `cm_param_set_labels`, `CMData(...; param_sets=...)` →
+`CMData(...; cm_param_sets=...)`, `_sliceParamSet` → `_sliceCmParamSet`, etc. Explicit,
+deliberate breaking change — not treated as a compat concern (pre-1.0, and every downstream call
+site needs touching regardless of how the terminology shakes out). Full test suite green after
+the rename.
+
+Superseded, not erased: the original "cohort → param_set" decision above is still correct that
+*a single term* was the right call — this just widens that term so it can't be confused with an
+SM parameter in the same sentence.
+
+### Cross-repo follow-ups (tracked, not part of this branch)
+Same rename needs to land in SmoreFit (`_cohortMLE`/`_meanCohortMLE` internal helpers, plus any
+direct calls into SmoreBase's renamed API) and SmoreExamples (`CMData(...; param_sets=...)` call
+sites, `n_cohort` locals). SmoreGSA doesn't call the renamed SmoreBase API directly, so no
+changes needed there beyond the `_runSensitivity` reorder already tracked above.
+
+### Status
+In progress on `feature/ode-sm-and-batched-uq`.
