@@ -62,7 +62,7 @@ samples = sampleSMPredictions(problem, uq)
 - [x] `SMFitResult` — result type for SM fitting
 - [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms; `fitResult` may be omitted, in which case it is computed internally via `fitSurrogate(problem; executor)`
 - [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ
-- [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels
+- [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels; `GridCMSample` also accepts the per-dimension value vectors directly (`GridCMSample(axes...; names)`), building the Cartesian-product matrix instead of validating a pre-built one
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
 - [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
 - [x] Plots extension (`SmoreBasePlotsExt`) — `plot(SMFitPlot(sm, data, fit))`, `plot(fit_result)`, `plot(uq_result)`, `plot(sampled_preds)`; activated by loading `RecipesBase`
