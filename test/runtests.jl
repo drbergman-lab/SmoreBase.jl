@@ -747,6 +747,39 @@ end
     @test_throws ArgumentError GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1])  # missing (2.0,0.2)
     @test_throws ArgumentError GridCMSample([1.0 0.1; 1.0 0.1; 2.0 0.2; 2.0 0.2])  # dup row
 
+    # GridCMSample(axes...): vector-sequence constructor
+    g_axes = GridCMSample([1.0, 2.0], [0.1, 0.2])
+    @test g_axes isa GridCMSample
+    @test g_axes.axes[1] == [1.0, 2.0]
+    @test g_axes.axes[2] == [0.1, 0.2]
+    @test g_axes.names == ["cm_1", "cm_2"]
+    # Row order isn't part of the contract (GridCMSample only guarantees a value-based
+    # lookup via `_gridIndices`, not a specific row order), so compare as sets of rows —
+    # via `Tuple.(eachrow(...))` rather than sorting the row views directly, since
+    # `isless` isn't defined for `SubArray` rows.
+    @test sort(Tuple.(eachrow(g_axes.params))) == sort(Tuple.(eachrow(g.params)))
+
+    # No axis vectors at all → ArgumentError, not a degenerate 1×0 sample
+    @test_throws ArgumentError GridCMSample()
+
+    # Unsorted input vectors are sorted internally
+    g_axes_unsorted = GridCMSample([2.0, 1.0], [0.2, 0.1])
+    @test g_axes_unsorted.axes[1] == [1.0, 2.0]
+    @test g_axes_unsorted.axes[2] == [0.1, 0.2]
+
+    # Custom names
+    g_axes_named = GridCMSample([1.0, 2.0], [0.1, 0.2]; names = ["cm_r", "cm_K"])
+    @test g_axes_named.names == ["cm_r", "cm_K"]
+    @test_throws ArgumentError GridCMSample([1.0, 2.0], [0.1, 0.2]; names = ["only_one"])
+
+    # 1-D grid via a single vector
+    g_axes_1d = GridCMSample([1.0, 2.0, 3.0])
+    @test g_axes_1d.axes == [[1.0, 2.0, 3.0]]
+    @test g_axes_1d.names == ["cm_1"]
+
+    # Repeated value within an axis → ArgumentError
+    @test_throws ArgumentError GridCMSample([1.0, 1.0, 2.0], [0.1, 0.2, 0.3])
+
     # ScatteredCMSample
     s = ScatteredCMSample([0.13 0.7; 0.42 0.2; 0.91 0.55])
     @test s isa ScatteredCMSample

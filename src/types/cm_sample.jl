@@ -62,6 +62,45 @@ function GridCMSample(params::AbstractMatrix; names::Union{Nothing,Vector{String
 end
 
 """
+    GridCMSample(axes::AbstractVector{<:Real}...; names=nothing)
+
+Build a `GridCMSample` from the per-dimension values directly, one vector per CM parameter.
+
+# Arguments
+- `axes...` — one vector per CM parameter, holding the values used along that dimension; need
+  not be pre-sorted
+- `names` — CM parameter names, one per vector in `axes`; defaults to auto-generated
+  `"cm_1", "cm_2", ...` if not supplied
+
+Throws `ArgumentError` if called with no axis vectors, if any vector has repeated values, or if
+`names` has the wrong length.
+
+# Example
+```julia
+# 2-D grid over two CM parameters (4 cm_param_sets), with names
+cm_sample = GridCMSample([1.0, 2.0], [0.1, 0.2]; names = ["cm_r", "cm_K"])
+```
+"""
+function GridCMSample(axes::AbstractVector{<:Real}...; names::Union{Nothing,Vector{String}} = nothing)
+    isempty(axes) && throw(ArgumentError(
+        "GridCMSample: at least one axis vector is required"
+    ))
+    names_eff = _cmSampleNames(names, length(axes))
+    sorted_axes = Vector{Float64}[]
+    for a in axes
+        length(Set(a)) == length(a) || throw(ArgumentError(
+            "GridCMSample: each axis vector must contain unique values"
+        ))
+        push!(sorted_axes, sort(Float64.(a)))
+    end
+    mat = Matrix{Float64}(undef, prod(length.(sorted_axes)), length(sorted_axes))
+    for (k, combo) in enumerate(Iterators.product(sorted_axes...))
+        mat[k, :] .= combo
+    end
+    return GridCMSample(mat, sorted_axes, names_eff)
+end
+
+"""
     ScatteredCMSample(params; names=nothing)
 
 CM parameter points at arbitrary (non-grid) locations.

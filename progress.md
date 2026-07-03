@@ -449,6 +449,46 @@ In progress on `feature/ode-sm-and-batched-uq`.
 
 ---
 
+## Session: `GridCMSample(axes...)` vector-sequence constructor (2026-07-02)
+
+### Goal
+`GridCMSample` only accepted a pre-built `params` matrix, validated post-hoc as a Cartesian
+product. Callers building a grid from scratch had to hand-assemble the full matrix themselves.
+Add a constructor that takes the per-dimension value vectors directly and builds the matrix,
+since correctness is then guaranteed by construction rather than needing the grid-shape check.
+
+### Decision
+New overload `GridCMSample(axes::AbstractVector{<:Real}...; names=nothing)`. Validates only that
+each vector has unique values; sorts each axis; builds `params` as the Cartesian product via
+`Iterators.product`; constructs the struct directly (bypassing the matrix constructor's
+grid-shape validation, which doesn't apply here). Existing matrix-based constructor is untouched
+— purely additive.
+
+### Cross-repo follow-ups (tracked, not part of this branch)
+SmoreExamples call sites that hand-build a `GridCMSample` matrix from known axis values should
+switch to this constructor.
+
+### Copilot review (PR #17)
+Three suggestions; two addressed, one declined:
+- **Addressed:** `GridCMSample()` with zero axis vectors previously slipped through to a
+  degenerate 1×0 `params` matrix with empty `axes`/`names` — added an explicit `isempty(axes)`
+  check up front, throwing `ArgumentError` instead.
+- **Addressed:** the new-constructor test compared row order via `sort(collect(eachrow(...)))`,
+  which sorts `SubArray` row views directly — `isless` isn't defined for those, so this was
+  fragile even though it happened to pass. Switched to `sort(Tuple.(eachrow(...)))`, which
+  compares the same "same rows, any order" property robustly.
+- **Declined:** `Iterators.product` varies the first axis fastest, so the new constructor's row
+  order doesn't match the "last axis varies fastest" order used in the matrix-constructor
+  examples elsewhere in the docstrings. Not fixed — row order was never part of the contract;
+  `_gridIndices` locates each row by value via `searchsortedfirst`, not by position, so no
+  consumer depends on a specific row order. Matching the matrix example's incidental order would
+  add complexity for a property nothing relies on.
+
+### Status
+Implemented on `feature/grid-cm-sample-axes`.
+
+---
+
 ## Session: Default `P0` from prior medians; `quantifyUncertainty` without a `fitResult` (2026-07-02)
 
 ### Goal
