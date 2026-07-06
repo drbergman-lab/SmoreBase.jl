@@ -38,7 +38,7 @@ src/
 │   ├── loss.jl             # AbstractLoss, GaussianNLL, CustomLoss
 │   ├── parameter_prior.jl  # ParameterPrior
 │   ├── results.jl          # SMFitResult, ProfileLikelihoodResult, ProfileCurve, SampledPredictions
-│   └── surrogate_model.jl  # AbstractSurrogateModel, ODESurrogateModel, AnalyticalSurrogateModel
+│   └── surrogate_model.jl  # AbstractSurrogateModel, ODESurrogateModel, CustomSurrogateModel
 ├── fitting/
 │   ├── fitting.jl          # fitSurrogate
 │   ├── objective.jl        # _buildObjective, _computeLoss

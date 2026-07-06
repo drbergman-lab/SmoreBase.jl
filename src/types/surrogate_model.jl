@@ -66,77 +66,50 @@ function ODESurrogateModel(;
 end
 
 """
-    AnalyticalSurrogateModel(; fn, kwargs...)
+    CustomSurrogateModel(; fn, kwargs...)
 
-Surrogate model defined by a closed-form analytical function.
+Surrogate model defined by an arbitrary user-supplied function.
 
-`fn` signature: `(t::Vector, p::Vector, condition::String) -> Matrix{Float64}`
-where rows are time points and columns are output variables.
+`fn` may be a closed-form analytical solution, a numerical solve (e.g. a PDE method-of-lines
+integration), a lookup table, or any other mapping. Anything the function needs beyond
+`(t, p, condition)` — such as an initial condition, a spatial mesh, or solver settings — is
+captured in its closure.
+
+`fn` signature: `(t::Vector, p::Vector, condition) -> Matrix{Float64}`
+where rows are time points and columns are output variables. Receives the **preprocessed**
+`(p, condition)`.
 
 # Fields
-- `fn` — analytical solution function
+- `fn` — surrogate evaluation function
 - `pre_processor` — `Union{Nothing,Function}` of the form `(p, condition) -> (p_new, condition_new)`, applied before evaluation
 - `post_processor` — `Union{Nothing,Function}` applied to the prediction matrix after evaluation
 
-# Example
+# Examples
 ```julia
-sm = AnalyticalSurrogateModel(
+# Closed-form logistic solution.
+sm = CustomSurrogateModel(
     fn = (t, p, c) -> reshape(p[2] ./ (1 .+ (p[2]/0.01 - 1) .* exp.(-p[1] .* t)), :, 1),
+)
+
+# Numerical solve closing over an initial condition.
+y0 = [0.01]
+sm = CustomSurrogateModel(
+    fn = (t, p, _c) -> reshape(y0[1] .+ p[1] .* t, :, 1),
 )
 ```
 """
-struct AnalyticalSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel
+struct CustomSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel
     fn::F
     pre_processor::Pre
     post_processor::Post
 end
 
-function AnalyticalSurrogateModel(;
+function CustomSurrogateModel(;
     fn,
     pre_processor   = nothing,
     post_processor  = nothing,
 )
-    return AnalyticalSurrogateModel(fn, pre_processor, post_processor)
-end
-
-"""
-    CustomSolverSurrogateModel(; solve_fn, y0, kwargs...)
-
-Surrogate model whose trajectory is produced by a user-supplied solver, entirely bypassing
-`OrdinaryDiffEq` (no package extension needed — `_evaluate` is defined here in the main package).
-
-`solve_fn` signature: `(t::Vector, p::Vector, condition, y0::Vector{Float64}) -> Matrix{Float64}`
-where rows are time points and columns are output variables. Receives the **preprocessed**
-`(p, condition)`.
-
-# Fields
-- `solve_fn` — custom solve function
-- `y0` — initial conditions (`Vector{Float64}`), passed through to `solve_fn`
-- `pre_processor` — `Union{Nothing,Function}` of the form `(p, condition) -> (p_new, condition_new)`, applied before solving
-- `post_processor` — `Union{Nothing,Function}` applied to the prediction matrix after solving
-
-# Example
-```julia
-sm = CustomSolverSurrogateModel(
-    solve_fn = (t, p, _c, y0) -> reshape(y0[1] .+ p[1] .* t, :, 1),
-    y0       = [0.01],
-)
-```
-"""
-struct CustomSolverSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel
-    solve_fn::F
-    y0::Vector{Float64}
-    pre_processor::Pre
-    post_processor::Post
-end
-
-function CustomSolverSurrogateModel(;
-    solve_fn,
-    y0,
-    pre_processor   = nothing,
-    post_processor  = nothing,
-)
-    return CustomSolverSurrogateModel(solve_fn, y0, pre_processor, post_processor)
+    return CustomSurrogateModel(fn, pre_processor, post_processor)
 end
 
 # ── internal evaluation helpers ───────────────────────────────────────────────
@@ -158,18 +131,13 @@ end
 
 Internal evaluation entry point. Returns a `[n_times × n_outputs]` matrix of SM predictions.
 
-For `AnalyticalSurrogateModel`: calls `sm.fn(t, p, condition)`.
-For `ODESurrogateModel`: requires the `OrdinaryDiffEq` extension to be loaded.
+For both built-in surrogate model types (`CustomSurrogateModel` and `ODESurrogateModel`), this
+applies the `pre_processor` to `(p, condition)`, evaluates the model, then applies the
+`post_processor` to the resulting prediction matrix.
 """
-function _evaluate(sm::AnalyticalSurrogateModel, t, p, condition)
+function _evaluate(sm::CustomSurrogateModel, t, p, condition)
     p_eff, c_eff = _applyPreprocessor(sm, p, condition)
     result = sm.fn(t, p_eff, c_eff)
-    return _applyPostprocessor(sm, result)
-end
-
-function _evaluate(sm::CustomSolverSurrogateModel, t, p, condition)
-    p_eff, c_eff = _applyPreprocessor(sm, p, condition)
-    result = sm.solve_fn(t, p_eff, c_eff, sm.y0)
     return _applyPostprocessor(sm, result)
 end
 
