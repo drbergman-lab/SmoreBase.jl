@@ -78,25 +78,20 @@
   - `post_processor::Post` — `Union{Nothing,Function}` applied to ODE output before returning predictions
   - `t0::Float64 = 0.0` — start of the ODE solve `tspan`; the state at `t0` is `y0`. Observations are returned at the requested `t` via `saveat`, independent of `t0`.
   - `abstol::Float64 = 1e-6`, `reltol::Float64 = 1e-3`
-- `AnalyticalSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
-  - `fn::F` — analytical solution: `(t::Vector, p::Vector, condition) -> Matrix{Float64}` where rows are time points, columns are output variables
-  - `pre_processor::Pre`, `post_processor::Post`
-- `CustomSolverSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
-  - `solve_fn::F` — `(t::Vector, p::Vector, condition, y0::Vector{Float64}) -> Matrix{Float64}`
-  - `y0::Vector{Float64}` — initial conditions, passed through to `solve_fn`
+- `CustomSurrogateModel{F,Pre,Post} <: AbstractSurrogateModel`:
+  - `fn::F` — surrogate evaluation function: `(t::Vector, p::Vector, condition) -> Matrix{Float64}` where rows are time points, columns are output variables. May be a closed-form solution, a numerical solve (e.g. a PDE method-of-lines integration), a lookup table, etc.; anything beyond `(t, p, condition)` (initial condition, mesh, solver settings) is captured in the function's closure.
   - `pre_processor::Pre`, `post_processor::Post`
   - `_evaluate` is implemented in the main package
 - Internal dispatch: `_evaluate(sm::AbstractSurrogateModel, t, p, condition) -> Matrix{Float64}`
 - ODE extension: `_evaluate` on `ODESurrogateModel` is implemented in `ext/SmoreBaseOrdinaryDiffEqExt.jl`; loading `using OrdinaryDiffEq` activates it. Calling without the extension loaded throws a descriptive error.
 
 **Acceptance criteria:**
-- `_evaluate(sm::AnalyticalSurrogateModel, t, p, c)` calls `sm.fn(t, p, c)` and returns a matrix.
+- `_evaluate(sm::CustomSurrogateModel, t, p, c)` calls `sm.fn(t, p_eff, c_eff)` with the **preprocessed** `(p, condition)` and returns a matrix.
 - `_evaluate(sm::ODESurrogateModel, t, p, c)` solves the ODE from `t0` to `t[end]` (not from `t[1]`) and returns predictions at `t` via `saveat`.
-- `_evaluate(sm::CustomSolverSurrogateModel, t, p, c)` calls `sm.solve_fn(t, p_eff, c_eff, sm.y0)` with the **preprocessed** `(p, condition)`.
-- `pre_processor` is applied before solve/evaluate (for all three surrogate model types); `post_processor` is applied after. Signature: `(p, condition) -> (p_new, condition_new)`.
+- `pre_processor` is applied before solve/evaluate (for both surrogate model types); `post_processor` is applied after. Signature: `(p, condition) -> (p_new, condition_new)`.
 
 **Future (not in v0):**
-- Allow `pre_processor` to also alter `y0` (not just `p`/`condition`) — e.g. a condition like "immunotherapy" that changes one compartment's initial value rather than (or in addition to) a parameter. Would require widening the `pre_processor` signature to `(p, condition, y0) -> (p_new, condition_new, y0_new)` for `ODESurrogateModel` and `CustomSolverSurrogateModel`; `AnalyticalSurrogateModel` has no `y0` and is unaffected.
+- Allow `pre_processor` to also alter `y0` (not just `p`/`condition`) — e.g. a condition like "immunotherapy" that changes one compartment's initial value rather than (or in addition to) a parameter. Would require widening the `pre_processor` signature to `(p, condition, y0) -> (p_new, condition_new, y0_new)` for `ODESurrogateModel`. Scoped to `ODESurrogateModel` only, where the framework owns the solve and the initial condition; `CustomSurrogateModel` closures own their own initial condition and can branch on `condition` internally, so they need no framework-level `y0` seam.
 
 ---
 

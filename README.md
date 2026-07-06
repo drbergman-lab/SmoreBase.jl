@@ -54,7 +54,7 @@ samples = sampleSMPredictions(problem, uq)
 - [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_times, n_variables, n_conditions, n_cm_param_sets]`)
 - [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view; custom subtypes implement `_sliceCmParamSet`; documented in `docs/src/custom_data.md`
 - [x] `ConditionSpec`, `ParameterPrior` — supporting types (`ParameterPrior` holds `Distributions.jl` priors; box bounds via `Uniform`)
-- [x] `ODESurrogateModel`, `AnalyticalSurrogateModel`, `CustomSolverSurrogateModel` — surrogate model types with `_evaluate` dispatch; `ODESurrogateModel.t0` configures where the ODE solve `tspan` starts (default `0.0`, independent of the requested observation times)
+- [x] `ODESurrogateModel`, `CustomSurrogateModel` — surrogate model types with `_evaluate` dispatch; `CustomSurrogateModel` wraps any `(t, p, condition) -> Matrix` function (closed-form, numerical/PDE solve, lookup, …); `ODESurrogateModel.t0` configures where the ODE solve `tspan` starts (default `0.0`, independent of the requested observation times)
 - [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
 - [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types
 - [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
@@ -69,5 +69,5 @@ samples = sampleSMPredictions(problem, uq)
 
 ### Remaining
 
-- [ ] `ODESurrogateModel.y0` / `CustomSolverSurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions; relatedly, allow `pre_processor` to alter `y0` itself (not just `p`/`condition`) for conditions that change an initial compartment value (e.g. immunotherapy) — see PRD.md
+- [ ] `ODESurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions; relatedly, allow `pre_processor` to alter `y0` itself (not just `p`/`condition`) for conditions that change an initial compartment value (e.g. immunotherapy). Scoped to `ODESurrogateModel` only — `CustomSurrogateModel` closures own their own initial condition — see PRD.md
 - [ ] Pipeline persistence — HDF5 serialization/deserialization of `CMData`, `SMFitResult`, `ProfileLikelihoodResult`, `SampledPredictions`

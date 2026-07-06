@@ -164,10 +164,10 @@ end
     @test n_times(d) == 1 && n_variables(d) == 1 && n_conditions(d) == 1 && n_cm_param_sets(d) == 5
 end
 
-# ── AnalyticalSurrogateModel / _evaluate ──────────────────────────────────────
+# ── CustomSurrogateModel / _evaluate ──────────────────────────────────────────
 
-@testset "AnalyticalSurrogateModel" begin
-    sm = AnalyticalSurrogateModel(fn = _logistic)
+@testset "CustomSurrogateModel" begin
+    sm = CustomSurrogateModel(fn = _logistic)
     t  = collect(0.0:1.0:5.0)
     p  = [0.5, 5.0]
 
@@ -177,7 +177,7 @@ end
     @test all(A .> 0)
 
     # pre_processor transforms parameters before fn is called
-    sm_pre = AnalyticalSurrogateModel(
+    sm_pre = CustomSurrogateModel(
         fn            = (t, p, c) -> reshape(fill(p[1], length(t)), :, 1),
         pre_processor = (p, c) -> ([p[1] * 2], c),
     )
@@ -185,12 +185,18 @@ end
     @test all(A_pre .≈ 6.0)
 
     # post_processor: multiply by 2
-    sm_post = AnalyticalSurrogateModel(
+    sm_post = CustomSurrogateModel(
         fn             = (t, p, c) -> ones(length(t), 1),
         post_processor = A -> A .* 2,
     )
     A_post = SmoreBase._evaluate(sm_post, t, p, "x")
     @test all(A_post .≈ 2.0)
+
+    # A numerical-solve surrogate closes over its initial condition (no y0 field).
+    y0 = [0.01]
+    sm_solve = CustomSurrogateModel(fn = (t, p, _c) -> reshape(y0[1] .+ p[1] .* t, :, 1))
+    A_solve  = SmoreBase._evaluate(sm_solve, t, [2.0], "default")
+    @test vec(A_solve) ≈ 0.01 .+ 2.0 .* t
 end
 
 # OrdinaryDiffEq is loaded in the test target, so the ODE extension is active and the
@@ -249,38 +255,6 @@ end
     @test sm_int_kwargs.reltol === 1.0
 end
 
-@testset "CustomSolverSurrogateModel" begin
-    t = [0.0, 0.5, 1.0, 2.0]
-
-    sm = CustomSolverSurrogateModel(
-        solve_fn = (t, p, _c, y0) -> reshape(y0[1] .+ p[1] .* t, :, 1),
-        y0       = [0.01],
-    )
-    A = SmoreBase._evaluate(sm, t, [2.0], "default")
-    @test A isa AbstractMatrix
-    @test vec(A) ≈ 0.01 .+ 2.0 .* t
-
-    # pre_processor must be applied before solve_fn is called, and solve_fn receives y0.
-    captured = Ref{Vector{Float64}}()
-    sm_pre = CustomSolverSurrogateModel(
-        solve_fn      = (t, p, c, y0) -> (captured[] = p; reshape(fill(p[1] + y0[1], length(t)), :, 1)),
-        y0            = [0.01],
-        pre_processor = (p, c) -> ([p[1] * 2, ], c),
-    )
-    A_pre = SmoreBase._evaluate(sm_pre, t, [3.0], "x")
-    @test captured[] == [6.0]      # 3.0 * 2
-    @test all(A_pre .≈ 6.01)
-
-    # post_processor: multiply by 2
-    sm_post = CustomSolverSurrogateModel(
-        solve_fn       = (t, p, c, y0) -> ones(length(t), 1),
-        y0             = [0.0],
-        post_processor = A -> A .* 2,
-    )
-    A_post = SmoreBase._evaluate(sm_post, t, [1.0], "x")
-    @test all(A_post .≈ 2.0)
-end
-
 # ── Loss functions ─────────────────────────────────────────────────────────────
 
 @testset "GaussianNLL" begin
@@ -310,7 +284,7 @@ end
 # ── SMFitProblem ──────────────────────────────────────────────────────────────
 
 @testset "SMFitProblem" begin
-    sm    = AnalyticalSurrogateModel(fn = _logistic)
+    sm    = CustomSurrogateModel(fn = _logistic)
     t     = collect(0.0:1.0:5.0)
     data  = CMData(μ = rand(6), σ = 0.1 .* ones(6), times = t)
     prior = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
@@ -350,7 +324,7 @@ end
     μ_true = _logistic(t, p_true, nothing)
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
 
-    sm    = AnalyticalSurrogateModel(fn = _logistic)
+    sm    = CustomSurrogateModel(fn = _logistic)
     prior = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob  = SMFitProblem(sm, data, prior)
     P0    = [0.5 5.0]
@@ -404,7 +378,7 @@ end
     μ_true = _logistic(t, p_true, nothing)
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
 
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     P0     = [0.5 5.0]
@@ -464,7 +438,7 @@ end
         p1_true = [0.5]
         μ1      = _exp_decay(t1, p1_true, nothing)
         data1   = CMData(μ = vec(μ1), σ = 0.01 .* ones(length(t1)), times = t1)
-        sm1     = AnalyticalSurrogateModel(fn = _exp_decay)
+        sm1     = CustomSurrogateModel(fn = _exp_decay)
         prior1  = ParameterPrior([0.01], [2.0]; names = ["r"])
         prob1   = SMFitProblem(sm1, data1, prior1)
         result1 = fitSurrogate(prob1, reshape([0.4], 1, 1))
@@ -488,7 +462,7 @@ end
     data   = CMData(μ = repeat(μ_true, 1, n_ps), σ = 0.05 .* ones(length(μ_true), n_ps), times = t,
                      cm_param_sets = n_ps)
 
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5, 5.0])   # vector P0, broadcasts to all 3 cm_param_sets
@@ -526,7 +500,7 @@ end
     data   = CMData(μ = repeat(μ_true, 1, n_ps), σ = 0.05 .* ones(length(μ_true), n_ps), times = t,
                      cm_param_sets = n_ps)
 
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     method = ProfileLikelihood(n_points = 15, confidence_level = 0.95)
@@ -564,7 +538,7 @@ end
     μ_true = _logistic(t, p_true, nothing)
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
 
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     P0     = [0.5 5.0]
@@ -604,7 +578,7 @@ end
 
 @testset "UQ extension seam — custom SMUQResult" begin
     t     = collect(0.0:0.5:5.0)
-    sm    = AnalyticalSurrogateModel(fn = _logistic)
+    sm    = CustomSurrogateModel(fn = _logistic)
     prior = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     data  = CMData(μ = vec(_logistic(t, [0.6, 4.0], nothing)), σ = 0.05 .* ones(length(t)), times = t)
     prob  = SMFitProblem(sm, data, prior)
@@ -659,7 +633,7 @@ end
     p_true = [0.6, 4.0]
     μ_true = _logistic(t, p_true, nothing)
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])
@@ -681,7 +655,7 @@ end
     p_true = [0.6, 4.0]
     μ_true = _logistic(t, p_true, nothing)
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])
@@ -707,7 +681,7 @@ end
     p_true = [0.6, 4.0]
     μ_true = _logistic(t, p_true, nothing)
     data   = CMData(μ = vec(μ_true), σ = 0.05 .* ones(length(μ_true)), times = t)
-    sm     = AnalyticalSurrogateModel(fn = _logistic)
+    sm     = CustomSurrogateModel(fn = _logistic)
     prior  = ParameterPrior([0.01, 0.5], [2.0, 10.0]; names = ["r", "K"])
     prob   = SMFitProblem(sm, data, prior)
     result = fitSurrogate(prob, [0.5 5.0])

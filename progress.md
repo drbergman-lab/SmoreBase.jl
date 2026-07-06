@@ -558,3 +558,44 @@ changes needed there beyond the `_runSensitivity` reorder already tracked above.
 
 ### Status
 In progress on `feature/ode-sm-and-batched-uq`.
+
+---
+
+## Session: Merge `AnalyticalSurrogateModel` + `CustomSolverSurrogateModel` → `CustomSurrogateModel` (2026-07-06)
+
+### Goal
+Prompted by a PDE-surrogate question: where should a spatial field be compressed to observables,
+and which surrogate type holds a numerical PDE solve? Investigating showed the two non-ODE
+surrogate types had collapsed to near-duplicates.
+
+### Decision
+`CustomSolverSurrogateModel.y0` is never consumed by the framework — `_evaluate` passes it
+straight back to the user's `solve_fn` (unlike `ODESurrogateModel.y0`, which the extension feeds
+into `ODEProblem`). With `y0` removed it can be captured in the function's closure, and the two
+types become structurally identical (`{fn, pre_processor, post_processor}` + an `_evaluate` that
+does pre → `fn(t,p,c)` → post). Merged into a single `CustomSurrogateModel`, which also drops the
+"Analytical" name — a poor fit for a numerical PDE solve. This supersedes the
+`feature/ode-sm-and-batched-uq` decision "b — new `CustomSolverSurrogateModel` type, not a field"
+(above): splitting the custom solver out of `ODESurrogateModel` was right; giving it its own
+*type* rather than folding it into the analytical one was the part that didn't survive.
+
+- Name: `CustomSurrogateModel` (parallels `CustomLoss`), chosen over `FunctionSurrogateModel`.
+- No deprecation aliases — hard breaking rename (pre-1.0; every call site touched anyway).
+- `fn` documented as accepting closed-form solutions, numerical solves (PDE method-of-lines), or
+  lookups; anything beyond `(t, p, condition)` (initial condition, mesh, solver settings) lives in
+  the closure. PDE fields are compressed to observables via `fn`/`post_processor` (SM side) or a
+  `CustomLoss` (loss side).
+
+**Deferred `pre_processor`-alters-`y0` feature re-scoped to `ODESurrogateModel` only.** Its whole
+point is a framework-owned seam to rewrite the initial condition per condition while keeping a
+generic RHS — meaningful only where the framework owns the solve. A `CustomSurrogateModel` closure
+owns its own initial condition and already receives `condition`, so it can branch internally; no
+`y0` seam is needed. PRD.md "Future (not in v0)" and README "Remaining" updated accordingly.
+
+### Cross-repo follow-ups (in scope this session)
+Simple rename `AnalyticalSurrogateModel` → `CustomSurrogateModel` (no `CustomSolverSurrogateModel`
+usage exists anywhere downstream): SmoreGSA `test/runtests.jl`, SmoreFit `test/runtests.jl`,
+SmoreExamples (4 example files + one prose reference). No `y0`/`solve_fn` call sites to migrate.
+
+### Status
+In progress on `feature/merge-custom-surrogate`.
