@@ -66,6 +66,7 @@ samples = sampleSMPredictions(problem, uq)
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
 - [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
 - [x] Plots extension (`SmoreBasePlotsExt`) — `plot(SMFitPlot(sm, data, fit))`, `plot(fit_result)`, `plot(uq_result)`, `plot(sampled_preds)`; activated by loading `RecipesBase`
+- [x] PCMM extension (`SmoreBasePhysiCellModelManagerExt`) — `cmDataFromPCMM(sampling_or_trial_or_monad; cell_types, obs_times, sd_floor, …)` builds `CMData` (replicate mean/SD of population counts) plus a `CMSample` of the varied parameters from PhysiCellModelManager.jl output; activated by `using PhysiCellModelManager`
 
 ### Remaining
 

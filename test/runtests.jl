@@ -842,3 +842,78 @@ end
         g1, lb1, ub1, RBFCIInterp(),
     )
 end
+
+# ── CMData from PCMM: pure core (no PhysiCellModelManager needed) ──────────────
+
+@testset "cmDataFromPCMM core" begin
+    t = [0.0, 1440.0, 2880.0, 4320.0]   # PhysiCell minutes
+    rep(id, a, b) = (id=id, time=t, counts=hcat(a, b))
+    # parameter set 1: two replicates, two cell types
+    g1 = [rep(1, [10, 20, 30, 40], [5, 6, 7, 8]), rep(2, [10, 22, 34, 46], [5, 8, 7, 12])]
+    g2 = [rep(3, [10, 11, 12, 13], [5, 5, 9, 9]), rep(4, [10, 13, 16, 19], [5, 7, 9, 11]),
+          rep(5, [10, 15, 20, 25], [5, 9, 9, 13])]
+    vars = ["tumor", "immune"]
+
+    # t = 0 has SD 0 everywhere → error by default
+    err = try
+        SmoreBase._cmDataFromReplicates([g1, g2]; variable_labels=vars, cm_param_set_labels=["a", "b"])
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("SD is 0", err.msg) && occursin("t=0.0", err.msg)
+    # g1 "immune" also agrees at t = 48 h; the floor fixes both
+    d = SmoreBase._cmDataFromReplicates([g1, g2]; variable_labels=vars,
+                                        cm_param_set_labels=["a", "b"], sd_floor=0.5)
+    @test size(d.μ) == (4, 2, 1, 2)
+    @test d.times ≈ [0.0, 24.0, 48.0, 72.0]
+    @test d.variable_labels == vars
+    @test d.cm_param_set_labels == ["a", "b"]
+    @test d.σ[1, 1, 1, 1] == 0.5
+    @test d.μ[:, 1, 1, 2] ≈ [10, 13, 16, 19]
+    @test d.σ[2, 1, 1, 2] ≈ std([11, 13, 15])
+
+    # obs_times subset (scaled units), matched within tolerance; no floor needed
+    d = SmoreBase._cmDataFromReplicates([g1, g2]; variable_labels=vars,
+                                        cm_param_set_labels=["a", "b"], obs_times=[24.0, 72.0 + 1e-9])
+    @test size(d.μ) == (2, 2, 1, 2)
+    @test d.times ≈ [24.0, 72.0]
+    @test d.μ[:, 2, 1, 1] ≈ [7.0, 10.0]
+    @test d.σ[:, 2, 1, 1] ≈ [std([6, 8]), std([8, 12])]
+    # time_scale = 1 keeps minutes
+    d = SmoreBase._cmDataFromReplicates([g1]; variable_labels=vars, cm_param_set_labels=["a"],
+                                        time_scale=1, obs_times=[1440.0])
+    @test d.times == [1440.0] && n_cm_param_sets(d) == 1
+
+    # requested time not saved
+    @test_throws ArgumentError SmoreBase._cmDataFromReplicates([g1]; variable_labels=vars,
+        cm_param_set_labels=["a"], obs_times=[30.0])
+    @test_throws ArgumentError SmoreBase._cmDataFromReplicates([g1]; variable_labels=vars,
+        cm_param_set_labels=["a"], obs_times=[24.0, 24.0])
+    # replicates with different save times
+    bad = [g1[1], (id=9, time=[0.0, 1440.0, 2880.0, 4330.0], counts=g1[2].counts)]
+    @test_throws ArgumentError SmoreBase._cmDataFromReplicates([bad]; variable_labels=vars,
+        cm_param_set_labels=["a"], sd_floor=1)
+    # parameter sets with different save times (no obs_times)
+    short = [(id=r.id, time=t[1:3], counts=r.counts[1:3, :]) for r in g2]
+    @test_throws ArgumentError SmoreBase._cmDataFromReplicates([g1, short]; variable_labels=vars,
+        cm_param_set_labels=["a", "b"], sd_floor=1)
+    # ...but a common obs_times subset works
+    d = SmoreBase._cmDataFromReplicates([g1, short]; variable_labels=vars,
+        cm_param_set_labels=["a", "b"], obs_times=[24.0])
+    @test n_times(d) == 1
+    # a single replicate has no SD
+    @test_throws ArgumentError SmoreBase._cmDataFromReplicates([g1[1:1]]; variable_labels=vars,
+        cm_param_set_labels=["a"], sd_floor=1)
+    # label count mismatch
+    @test_throws ArgumentError SmoreBase._cmDataFromReplicates([g1]; variable_labels=vars,
+        cm_param_set_labels=["a", "b"])
+
+    @test SmoreBase._variedLabels([("rate", [0.1, 0.2]), ("hm", [1.0, 2.0])], 2) ==
+          ["rate=0.1, hm=1.0", "rate=0.2, hm=2.0"]
+    @test isnothing(SmoreBase._variedLabels([], 3))
+
+    # without the extension loaded, the stub explains what to load
+    err = try cmDataFromPCMM(1) catch e; e end
+    @test err isa ArgumentError && occursin("using PhysiCellModelManager", err.msg)
+end

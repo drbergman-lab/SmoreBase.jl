@@ -599,3 +599,46 @@ SmoreExamples (4 example files + one prose reference). No `y0`/`solve_fn` call s
 
 ### Status
 In progress on `feature/merge-custom-surrogate`.
+
+---
+
+## Session: `cmDataFromPCMM` — PhysiCellModelManager extension (2026-11-05)
+
+### Goal
+Move SmorePaper's `scripts/export_cmdata.jl` (PCMM output → `CMData`) into SmoreBase so any PCMM
+user can go from a trial straight to `fitSurrogate`.
+
+### Decisions
+- **Named function `cmDataFromPCMM`, not a `CMData` method.** It must also return the CM parameter
+  matrix, which a constructor cannot. Returns a `NamedTuple` `(data, cm_sample, monad_ids,
+  simulation_ids)`; `cm_sample` reuses the existing `CMSample` factory, so a PCMM grid comes back as
+  a `GridCMSample` ready for SmoreGSA/SmoreFit.
+- **Inputs are PCMM objects.** One CM parameter set per `Monad` (it already holds the replicates);
+  `Sampling`/`Trial`/`PCMMOutput`/`Vector{Monad}` go through `monadsTable`, which supplies both the
+  varied-parameter columns and the ordering (sorted by every varied parameter, first column primary
+  — row-major for a 2-D grid, matching the old script). A `Vector{Simulation}` is one parameter set;
+  no same-monad check, since replicates can legitimately span monads that differ only in an
+  irrelevant setting (e.g. `omp_num_threads`). A lone `Simulation` errors.
+- **Pure core in the main package** (`src/pcmm.jl`: `_cmDataFromReplicates` + helpers) takes
+  `(id, time, counts)` replicate tuples, so tests need no PCMM and no PhysiCell. PCMM is not a test
+  target (BergmanLabRegistry dep, heavy). The extension is ~100 lines of reading only.
+- **SD = 0 is an error; `sd_floor` defaults to `nothing`.** Silently flooring hid t = 0 rows
+  (all replicates identical) behind an arbitrary noise level; the error names the entries and
+  points at `obs_times` / `sd_floor`. ≥ 2 replicates required (sample SD).
+- **Per-simulation reads, not `MonadPopulationTimeSeries`**: the monad reader silently drops
+  replicates with no output; here missing output is an error so μ/σ never use fewer replicates
+  than the user thinks.
+- **Variation-ID columns are dropped** from the varied set; non-numeric varied columns (e.g. a
+  differing config folder) go into labels but not `cm_sample`.
+
+### Performance note
+PCMM has no batched reader. First read parses every snapshot (~0.36 s/sim on the SmorePaper grid:
+174 s for 484 sims) and caches to each sim's `summary/`; cached, the same grid takes ~2 s.
+
+### Verification
+On SmorePaper's PCMM DB (grid-v1 sampling, 121 monads × 4 reps; data-v1 monad), with
+`obs_times=[24, 48, 72]`, μ, σ, times and θ match `data/smore/grid_v2.jld2` / `data_v2.jld2`
+exactly, in the same order.
+
+### Status
+Complete on `feature/pcmm-cmdata`.

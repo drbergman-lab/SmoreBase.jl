@@ -16,6 +16,7 @@ makedocs(;
         "Home" => "index.md",
         "Custom CM Data Types" => "custom_data.md",
         "Plotting" => "plotting.md",
+        "CMData from PhysiCellModelManager" => "pcmm.md",
     ],
 )
 

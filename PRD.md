@@ -347,6 +347,39 @@ There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` 
 
 ---
 
+### Feature: CMData from PhysiCellModelManager (PCMM extension)
+
+**One-line description:** Build `CMData` (plus the matching CM parameter matrix) directly from PhysiCellModelManager.jl simulation output.
+
+**Priority:** Should-have
+
+**Behavioral specification:**
+- `PhysiCellModelManager` is a weak dependency; `SmoreBasePhysiCellModelManagerExt` activates on `using PhysiCellModelManager`. Without it, `cmDataFromPCMM` throws an `ArgumentError` telling the user what to load.
+- `cmDataFromPCMM(T; cell_types=:all, include_dead=false, time_scale=1/60, obs_times=nothing, time_tol=1e-6, sd_floor=nothing)` accepts:
+  - `Sampling`, `Trial`, or `PCMMOutput` — one CM parameter set per monad (deduplicated);
+  - `AbstractVector{<:Monad}` — one CM parameter set per monad;
+  - `Monad` — one CM parameter set from its replicates;
+  - `AbstractVector{<:Simulation}` — replicates of one CM parameter set;
+  - a lone `Simulation` — `ArgumentError` (no SD from one replicate).
+- Returns `(data, cm_sample, monad_ids, simulation_ids)`:
+  - `data::CMData` of shape `[n_times × n_cell_types × 1 × n_cm_param_sets]`, μ = replicate mean, σ = sample SD of the population count;
+  - `cm_sample` = `CMSample` of the numeric varied parameters (columns named by PCMM short names), or `nothing` when none vary;
+  - parameter sets ordered as PCMM's `monadsTable` sorts them (by every varied parameter, first column primary); labels `"name=value, …"`, falling back to `"monad<id>"`.
+- `cell_types`: `:all` (sorted names), a name, or a vector of names → CMData variables in that order; an unknown name errors listing the available ones.
+- `obs_times` (scaled units) selects save times, matched within `time_tol`; a missing time errors. Empty or repeated `obs_times` error.
+- Every monad needs ≥ 2 replicates; replicates must share save times; all parameter sets must share (selected) times.
+- `sd_floor` (default `nothing`) raises SDs to at least that value; any SD still 0 is an `ArgumentError` naming the (time, variable) entries.
+- The array → `CMData` logic lives in the main package (`_cmDataFromReplicates`) so it is tested without PCMM; the extension only reads PCMM objects.
+
+**Acceptance criteria:**
+- Pure-core tests cover mean/SD, `obs_times` subsetting and tolerance, `time_scale`, `sd_floor`, and every error path.
+- On a real PCMM grid sampling, the result matches the hand-built CMData from the project script it replaces.
+
+**Out of scope:**
+- Substrate or other non-population observables; multiple conditions (each call yields one condition).
+
+---
+
 ## Ruled Out / Deferred
 
 - **Raw cell-level CM data in `CMData`**: defer to a future `CellTableCMData` subtype.

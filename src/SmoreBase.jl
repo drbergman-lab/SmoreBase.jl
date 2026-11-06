@@ -32,6 +32,9 @@ include("profile/profile.jl")
 # Prediction sampling
 include("sampling.jl")
 
+# PhysiCellModelManager import (stub + pure core; PCMM layer in SmoreBasePhysiCellModelManagerExt)
+include("pcmm.jl")
+
 # SMFitPlot wrapper (plot struct only; recipe in SmoreBasePlotsExt)
 include("plots/fit_recipe.jl")
 
@@ -55,6 +58,9 @@ export AbstractCIInterpolator, LinearCIInterp, RBFCIInterp
 
 # Exports — public API
 export fitSurrogate, quantifyUncertainty, sampleSMParameters, sampleSMParametersInBounds, sampleSMPredictions
+
+# Exports — CMData from PhysiCellModelManager output (implemented in SmoreBasePhysiCellModelManagerExt)
+export cmDataFromPCMM
 
 # Exports — plot wrappers
 export SMFitPlot
