@@ -1,6 +1,8 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+PhysiCellModelManager = "7582d1aa-5e58-4d65-a123-4418a61a2644"
 SmoreBase = "5c232813-7b28-4e6f-a96c-e027eca8fd3b"
 
 [compat]
 Documenter = "1.17.0"
+PhysiCellModelManager = "0.6"

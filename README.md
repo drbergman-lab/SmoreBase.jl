@@ -47,7 +47,7 @@ samples = sampleSMPredictions(problem, uq)
 
 ## Implementation Status
 
-> For Claude Code sessions: this section is the authoritative record of what has been built. Update it as features are completed. See [PRD.md](PRD.md) for behavioral specifications and [progress.md](progress.md) for decision rationale.
+> For Claude Code sessions: this section is the authoritative record of what has been built. Update it as features are completed. See [PRD.md](PRD.md) for behavioral specifications.
 
 ### Completed
 
@@ -66,8 +66,10 @@ samples = sampleSMPredictions(problem, uq)
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
 - [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
 - [x] Plots extension (`SmoreBasePlotsExt`) — `plot(SMFitPlot(sm, data, fit))`, `plot(fit_result)`, `plot(uq_result)`, `plot(sampled_preds)`; activated by loading `RecipesBase`
+- [x] PCMM extension (`SmoreBasePhysiCellModelManagerExt`) — `CMData(sampling_or_trial_or_monad; cell_types, time_unit, obs_times, …)` builds replicate mean/SD of population counts from PhysiCellModelManager.jl output, and `CMSample(sampling)` the matching varied-parameter matrix; activated by `using PhysiCellModelManager`. `SMFitProblem` now rejects σ ≤ 0 or NaN under `GaussianNLL`
 
 ### Remaining
 
 - [ ] `ODESurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions; relatedly, allow `pre_processor` to alter `y0` itself (not just `p`/`condition`) for conditions that change an initial compartment value (e.g. immunotherapy). Scoped to `ODESurrogateModel` only — `CustomSurrogateModel` closures own their own initial condition — see PRD.md
+- [ ] Individual-runs CM data — fit to each replicate rather than mean ± SD (replicate-axis `AbstractCMData` subtype + matching loss); the PCMM extension would then gain a kwarg to choose summary stats vs individual runs — see PRD.md
 - [ ] Pipeline persistence — HDF5 serialization/deserialization of `CMData`, `SMFitResult`, `ProfileLikelihoodResult`, `SampledPredictions`
