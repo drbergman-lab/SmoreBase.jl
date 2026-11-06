@@ -9,7 +9,6 @@ Assistant professor working on computational modeling of cancer-immune interacti
 |----------|---------|
 | [README.md](README.md) | Project overview + **Implementation Status** (what is built, what remains) |
 | [PRD.md](PRD.md) | Behavioral specification for every feature — acceptance criteria and edge cases |
-| [progress.md](progress.md) | Session journal: decisions made, approaches rejected, open questions |
 
 Start any feature session by reading the relevant PRD entry and the Implementation Status section of `README.md`.
 
@@ -51,6 +50,7 @@ src/
 └── sampling.jl             # sampleSMPredictions
 ext/
 ├── SmoreBaseOrdinaryDiffEqExt.jl  # ODE solving; activated when OrdinaryDiffEq loaded
+├── SmoreBasePhysiCellModelManagerExt.jl  # CMData/CMSample from PCMM output; activated when PhysiCellModelManager loaded
 └── SmoreBasePlotsExt.jl           # RecipesBase recipes; activated when RecipesBase loaded
 test/
 └── runtests.jl
@@ -96,13 +96,11 @@ The human reviews diffs and stages files themselves. Do not run `git add`, `git 
 ## Required Workflow for Any Change
 
 1. Generate a **design brief** in the assistant response **before any code changes**.
-2. Wait for human approval.
-   1. Update PRD.md to include new feature or changes.
-   2. Open a new entry in progress.md and log design process, decisions, open questions.
+2. Wait for human approval, then update PRD.md to include the new feature or changes.
 3. Create the feature branch: `git checkout -b feature/<desc>`.
 4. Implement in the feature branch only.
 5. Update [README.md](README.md) Implementation Status when a feature is complete.
-6. Trim PRD.md and progress.md to reflect final implementation before merging.
+6. Trim PRD.md to reflect the final implementation before merging.
 7. Tell the human the branch is ready; they will review, stage, and commit.
 
 **Design brief template:**
@@ -143,8 +141,9 @@ A feature is complete when **all** of the following are true:
 
 - Package entrypoint: `src/SmoreBase.jl` — add `include(...)` and update `export` when adding new source files
 - ODE extension: `ext/SmoreBaseOrdinaryDiffEqExt.jl` — activated by `using OrdinaryDiffEq`
+- PCMM extension: `ext/SmoreBasePhysiCellModelManagerExt.jl` — adds `CMData(::AbstractTrial)` / `CMSample(::AbstractTrial)` methods; all PCMM-specific code stays in the extension (nothing in `src/`)
 - Plots extension: `ext/SmoreBasePlotsExt.jl` — activated by loading `RecipesBase` (or any Plots.jl backend)
-- No Makie extension: Makie users build figures directly from the result types (see `docs/src/plotting.md`). Do not reintroduce a Makie extension — see `progress.md` (Drop Makie extension) for the rationale.
+- No Makie extension: Makie users build figures directly from the result types (see `docs/src/plotting.md`). Do not reintroduce a Makie extension — see PRD.md (Plotting) for the rationale.
 - `SMFitPlot` struct lives in `src/plots/fit_recipe.jl` (main package, not an extension) so the Plots extension can dispatch on it
 - Run tests: `julia --project=. -e 'using Pkg; Pkg.test()'`
 
@@ -153,4 +152,4 @@ A feature is complete when **all** of the following are true:
 - Always run Julia with `--project=.`
 - Preferred test command: `julia --project=. -e 'using Pkg; Pkg.test()'`
 - Do not edit `Manifest.toml` or add/bump dependencies without explicit approval.
-- `OrdinaryDiffEq` and `RecipesBase` are weak deps; users must load them explicitly to activate the respective extensions.
+- `OrdinaryDiffEq`, `RecipesBase` and `PhysiCellModelManager` are weak deps; users must load them explicitly to activate the respective extensions.

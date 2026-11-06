@@ -1,10 +1,13 @@
 using SmoreBase
+using PhysiCellModelManager   # load the extension so its docstrings are available
+
+const PCMMExt = Base.get_extension(SmoreBase, :SmoreBasePhysiCellModelManagerExt)
 using Documenter
 
 DocMeta.setdocmeta!(SmoreBase, :DocTestSetup, :(using SmoreBase); recursive=true)
 
 makedocs(;
-    modules=[SmoreBase],
+    modules=[SmoreBase, PCMMExt],
     authors="Daniel Bergman <danielrbergman@gmail.com> and contributors",
     sitename="SmoreBase.jl",
     format=Documenter.HTML(;
@@ -15,8 +18,10 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "Custom CM Data Types" => "custom_data.md",
-        "Plotting" => "plotting.md",
-        "CMData from PhysiCellModelManager" => "pcmm.md",
+        "Extensions" => [
+            "Plotting" => "plotting.md",
+            "PhysiCellModelManager" => "pcmm.md",
+        ],
     ],
 )
 

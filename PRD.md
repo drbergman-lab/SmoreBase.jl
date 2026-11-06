@@ -321,7 +321,7 @@ Making each step able to write its result to disk and read it back enables Nextf
 
 `RecipesBase` is a weak dependency. The Plots extension (`SmoreBasePlotsExt`) activates when `RecipesBase` is loaded.
 
-There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` methods conflicted with the composability Makie users expect (they could not customize legend, scale, limits, or layout without reaching into `fig.content`), and the methods duplicated domain knowledge the Plots recipes already encode without adding capability — Makie's rendering, interactivity, and layout power are available to users with or without an extension. Instead, the result types expose their data and `docs/src/plotting.md` shows Makie users how to build each figure directly. See `progress.md` (Drop Makie extension) for the full rationale.
+There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` methods conflicted with the composability Makie users expect (they could not customize legend, scale, limits, or layout without reaching into `fig.content`), and the methods duplicated domain knowledge the Plots recipes already encode without adding capability — Makie's rendering, interactivity, and layout power are available to users with or without an extension. Instead, the result types expose their data and `docs/src/plotting.md` shows Makie users how to build each figure directly.
 
 `SMFitPlot` is a plain wrapper struct defined in the main package (not an extension) so the Plots extension can dispatch on it.
 
@@ -349,33 +349,34 @@ There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` 
 
 ### Feature: CMData from PhysiCellModelManager (PCMM extension)
 
-**One-line description:** Build `CMData` (plus the matching CM parameter matrix) directly from PhysiCellModelManager.jl simulation output.
+**One-line description:** Build `CMData`, and the matching `CMSample` of CM parameters, directly from PhysiCellModelManager.jl simulation output.
 
 **Priority:** Should-have
 
 **Behavioral specification:**
-- `PhysiCellModelManager` is a weak dependency; `SmoreBasePhysiCellModelManagerExt` activates on `using PhysiCellModelManager`. Without it, `cmDataFromPCMM` throws an `ArgumentError` telling the user what to load.
-- `cmDataFromPCMM(T; cell_types=:all, include_dead=false, time_scale=1/60, obs_times=nothing, time_tol=1e-6, sd_floor=nothing)` accepts:
+- `PhysiCellModelManager` is a weak dependency; `SmoreBasePhysiCellModelManagerExt` activates on `using PhysiCellModelManager`. All PCMM-specific code lives in the extension: it adds methods to the existing `CMData` and `CMSample` functions and nothing to `src/`.
+- `CMData(T; cell_types=:all, include_dead=false, time_unit=:min, obs_times=nothing, time_tol=1e-6)` accepts:
   - `Sampling`, `Trial`, or `PCMMOutput` — one CM parameter set per monad (deduplicated);
   - `AbstractVector{<:Monad}` — one CM parameter set per monad;
   - `Monad` — one CM parameter set from its replicates;
-  - `AbstractVector{<:Simulation}` — replicates of one CM parameter set;
-  - a lone `Simulation` — `ArgumentError` (no SD from one replicate).
-- Returns `(data, cm_sample, monad_ids, simulation_ids)`:
-  - `data::CMData` of shape `[n_times × n_cell_types × 1 × n_cm_param_sets]`, μ = replicate mean, σ = sample SD of the population count;
-  - `cm_sample` = `CMSample` of the numeric varied parameters (columns named by PCMM short names), or `nothing` when none vary;
-  - parameter sets ordered as PCMM's `monadsTable` sorts them (by every varied parameter, first column primary); labels `"name=value, …"`, falling back to `"monad<id>"`.
-- `cell_types`: `:all` (sorted names), a name, or a vector of names → CMData variables in that order; an unknown name errors listing the available ones.
-- `obs_times` (scaled units) selects save times, matched within `time_tol`; a missing time errors. Empty or repeated `obs_times` error.
-- Every monad needs ≥ 2 replicates; replicates must share save times; all parameter sets must share (selected) times.
-- `sd_floor` (default `nothing`) raises SDs to at least that value; any SD still 0 is an `ArgumentError` naming the (time, variable) entries.
-- The array → `CMData` logic lives in the main package (`_cmDataFromReplicates`) so it is tested without PCMM; the extension only reads PCMM objects.
+  - `AbstractVector{<:Simulation}` — one CM parameter set; all simulations must belong to one monad (`ArgumentError` otherwise);
+  - `Simulation` — one CM parameter set from a single run.
+- Output shape `[n_times × n_cell_types × 1 × n_cm_param_sets]`; μ = replicate mean, σ = sample SD of the population count (`NaN` for a single replicate; 0 is kept).
+- Parameter sets are ordered as PCMM's `monadsTable` sorts the monads (by every varied parameter, first column primary); labels `"name=value, …"`, falling back to `"monad<id>"`.
+- `CMSample(T)` for `Sampling`/`Trial`/`PCMMOutput`/`Vector{Monad}` returns the numeric varied parameters as `[n_monads × n_varied]`, rows in the same order as `CMData(T)`'s parameter sets, columns named by PCMM short names (a grid gives a `GridCMSample`). `ArgumentError` for a single monad/simulation or when nothing numeric varies.
+- `cell_types`: `:all` (sorted names), a name, or a vector of names → CMData variables in that order; an unknown name errors listing the available ones. All simulations must have the same cell types.
+- `time_unit` (default `:min`, PhysiCell's native unit; also `:s`, `:h`, `:d`, `:w`, `:mo`, `:y`, matching PCMM's plotting symbols) sets the unit of `times` and `obs_times`.
+- `obs_times` selects save times, matched within `time_tol`; a missing time or an empty `obs_times` errors. Order and duplicates are left to the user.
+- Replicates must share save times; all parameter sets must share (selected) times.
+
+**Core change — `SMFitProblem` validation:** with `GaussianNLL`, a `CMData` without `Σ` must have every `σ` positive and finite; otherwise `SMFitProblem` throws an `ArgumentError` naming the entries. Other losses (e.g. `CustomLoss`) and data with a full covariance are not checked.
 
 **Acceptance criteria:**
-- Pure-core tests cover mean/SD, `obs_times` subsetting and tolerance, `time_scale`, `sd_floor`, and every error path.
+- Extension tests (PCMM loaded, no PhysiCell project) cover aggregation, cell-type selection, time units, `obs_times`, single-replicate NaN σ, and every error path.
 - On a real PCMM grid sampling, the result matches the hand-built CMData from the project script it replaces.
 
-**Out of scope:**
+**Out of scope (deferred):**
+- An "individual runs" mode (fit to each replicate instead of mean ± SD); needs a replicate-axis `AbstractCMData` subtype and a matching loss in core — separate feature.
 - Substrate or other non-population observables; multiple conditions (each call yields one condition).
 
 ---
