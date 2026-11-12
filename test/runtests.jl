@@ -842,3 +842,16 @@ end
         g1, lb1, ub1, RBFCIInterp(),
     )
 end
+
+@testset "zero-width CI warning" begin
+    # Zero-width sweep: all grid values equal → both crossings interpolate to 1.0
+    @test_logs (:warn, r"`k`.*zero width.*degenerate profile") SmoreBase._computeCI(
+        [1.0, 1.0, 1.0], [-5.0, 0.0, -5.0], -1.92; parameter_name = "k",
+    )
+    lo, hi = @test_logs (:warn, r"`\?`") SmoreBase._computeCI([1.0, 1.0, 1.0], [-5.0, 0.0, -5.0], -1.92)
+    @test lo == hi == 1.0
+    # Normal profile: no warning
+    @test_logs SmoreBase._computeCI([0.0, 1.0, 2.0], [-5.0, 0.0, -5.0], -1.92; parameter_name = "k")
+    # One-sided CI (upper bound missing): no warning
+    @test_logs SmoreBase._computeCI([0.0, 1.0, 2.0], [-5.0, 0.0, 0.0], -1.92; parameter_name = "k")
+end

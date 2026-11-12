@@ -599,3 +599,14 @@ SmoreExamples (4 example files + one prose reference). No `y0`/`solve_fn` call s
 
 ### Status
 In progress on `feature/merge-custom-surrogate`.
+
+## Zero-width CI warning (feature/zero-width-ci-warning)
+
+A profile-likelihood CI with `ci_lower == ci_upper` is pathological (e.g. -Inf log-likelihood
+next to the MLE, or a zero-width sweep) and downstream consumers such as SmoreFit's
+`:box_overlap` score treat it as zero volume. `_computeCI` now takes a `parameter_name` keyword
+and warns at the source on every occurrence (no `maxlog`, by user decision) so all
+`quantifyUncertainty` users see it.
+
+### Status
+Complete.

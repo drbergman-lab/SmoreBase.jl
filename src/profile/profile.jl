@@ -207,7 +207,7 @@ function quantifyUncertainty(
             p_warm = opt_params[j, :]
         end
 
-        ci_lower, ci_upper = _computeCI(grid, lls, threshold)
+        ci_lower, ci_upper = _computeCI(grid, lls, threshold; parameter_name = problem.prior.names[i])
 
         profiles[i] = ProfileCurve{Float64}(
             i,

@@ -1,10 +1,12 @@
 # Compute confidence interval from a profile likelihood curve by linear interpolation.
 # Returns (ci_lower, ci_upper); either can be `nothing` if the profile does not cross
-# the threshold on that side.
+# the threshold on that side. Emits a warning (every time) when both bounds exist and
+# coincide, naming `parameter_name`.
 function _computeCI(
     profile_values::AbstractVector,
     log_likelihoods::AbstractVector,
-    threshold::Real,
+    threshold::Real;
+    parameter_name::AbstractString = "?",
 )
     n = length(profile_values)
     peak_idx = argmax(log_likelihoods)
@@ -12,6 +14,13 @@ function _computeCI(
     ci_lower = _findCrossing(profile_values, log_likelihoods, threshold, 1, peak_idx, :left)
     ci_upper = _findCrossing(profile_values, log_likelihoods, threshold, peak_idx, n, :right)
 
+    if !isnothing(ci_lower) && !isnothing(ci_upper) && ci_lower == ci_upper
+        # Warn every time (no maxlog): a zero-width CI is pathological and downstream
+        # consumers (e.g. box-overlap scores) treat it as a zero-volume region.
+        @warn "Profile-likelihood CI for parameter `$(parameter_name)` has zero width " *
+              "(ci_lower == ci_upper == $(ci_lower)). This indicates a degenerate profile, " *
+              "e.g. -Inf log-likelihood at the points neighbouring the MLE or a zero-width sweep."
+    end
     return ci_lower, ci_upper
 end
 
