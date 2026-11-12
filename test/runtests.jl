@@ -844,6 +844,28 @@ end
     )
 end
 
+@testset "zero-width CI warning" begin
+    # Zero-width sweep: all grid values equal → both crossings interpolate to 1.0
+    @test_logs (:warn, r"`k`.*zero width.*degenerate profile") SmoreBase._computeCI(
+        [1.0, 1.0, 1.0], [-5.0, 0.0, -5.0], -1.92; parameter_name = "k",
+    )
+    lo, hi = @test_logs (:warn, r"`\?`") SmoreBase._computeCI([1.0, 1.0, 1.0], [-5.0, 0.0, -5.0], -1.92)
+    @test lo == hi == 1.0
+    # Normal profile: no warning
+    @test_logs SmoreBase._computeCI([0.0, 1.0, 2.0], [-5.0, 0.0, -5.0], -1.92; parameter_name = "k")
+    # One-sided CI (upper bound missing): no warning
+    @test_logs SmoreBase._computeCI([0.0, 1.0, 2.0], [-5.0, 0.0, 0.0], -1.92; parameter_name = "k")
+    # -Inf next to the MLE → Inf/Inf interpolation → NaN bound
+    @test_logs (:warn, r"`k`.*NaN bound") SmoreBase._computeCI(
+        [0.0, 1.0, 2.0], [-Inf, 0.0, -5.0], -1.92; parameter_name = "k",
+    )
+    # Global silencing, and setter returns the previous value
+    @test setDegenerateCIWarnings(false) === true
+    @test_logs SmoreBase._computeCI([1.0, 1.0, 1.0], [-5.0, 0.0, -5.0], -1.92)
+    @test_logs SmoreBase._computeCI([0.0, 1.0, 2.0], [-Inf, 0.0, -5.0], -1.92)
+    @test setDegenerateCIWarnings(true) === false
+end
+
 # ── PhysiCellModelManager extension (no PhysiCell project needed) ──────────────
 
 @testset "PCMM extension: CMData from population series" begin
