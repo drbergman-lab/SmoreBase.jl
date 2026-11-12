@@ -75,10 +75,6 @@ Build a `GridCMSample` from the per-dimension values directly, one vector per CM
 Throws `ArgumentError` if called with no axis vectors, if any vector has repeated values, or if
 `names` has the wrong length.
 
-The sample's `params` field holds one row per combination of axis values, with the first axis
-varying fastest. Anything paired with the sample row by row (such as one profile likelihood
-result per CM parameter set) must follow that order.
-
 # Example
 ```julia
 # 2-D grid over two CM parameters (4 cm_param_sets), with names
