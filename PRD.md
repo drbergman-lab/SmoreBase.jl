@@ -260,7 +260,7 @@
 - `GridCMSample(params)` / `ScatteredCMSample(params)` without `names` auto-generate `"cm_1", ..., "cm_n"`.
 - `GridCMSample(params; names=["cm_a","cm_b"])` stores the supplied names; length must match `size(params, 2)`.
 - `CMSample(params; names=...)` threads `names` through to whichever concrete type it constructs.
-- `GridCMSample([1.0, 2.0], [0.1, 0.2])` equals `GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])` (same `params`, `axes`, and default `names`).
+- `GridCMSample([1.0, 2.0], [0.1, 0.2])` matches `GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])`: the same rows (in any order), `axes`, and default `names`. Row order is not part of the contract — consumers locate a row by its values (`_gridIndices`), not its position — and the axes constructor varies the first axis fastest.
 - A vector with a repeated value (e.g. `[1.0, 1.0, 2.0]`) throws `ArgumentError`.
 - `GridCMSample()` (no axis vectors) throws `ArgumentError`.
 
@@ -323,7 +323,7 @@ Making each step able to write its result to disk and read it back enables Nextf
 
 `RecipesBase` is a weak dependency. The Plots extension (`SmoreBasePlotsExt`) activates when `RecipesBase` is loaded.
 
-There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` methods conflicted with the composability Makie users expect (they could not customize legend, scale, limits, or layout without reaching into `fig.content`), and the methods duplicated domain knowledge the Plots recipes already encode without adding capability — Makie's rendering, interactivity, and layout power are available to users with or without an extension. Instead, the result types expose their data and `docs/src/plotting.md` shows Makie users how to build each figure directly. See `progress.md` (Drop Makie extension) for the full rationale.
+There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` methods conflicted with the composability Makie users expect (they could not customize legend, scale, limits, or layout without reaching into `fig.content`), and the methods duplicated domain knowledge the Plots recipes already encode without adding capability — Makie's rendering, interactivity, and layout power are available to users with or without an extension. Instead, the result types expose their data and `docs/src/plotting.md` shows Makie users how to build each figure directly.
 
 `SMFitPlot` is a plain wrapper struct defined in the main package (not an extension) so the Plots extension can dispatch on it.
 

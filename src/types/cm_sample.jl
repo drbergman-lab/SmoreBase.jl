@@ -75,6 +75,10 @@ Build a `GridCMSample` from the per-dimension values directly, one vector per CM
 Throws `ArgumentError` if called with no axis vectors, if any vector has repeated values, or if
 `names` has the wrong length.
 
+The rows of `params` vary the first axis fastest, which need not match the row order of an
+equivalent matrix. Row order is not part of the `GridCMSample` contract: consumers locate a row by
+its values, not its position.
+
 # Example
 ```julia
 # 2-D grid over two CM parameters (4 cm_param_sets), with names
