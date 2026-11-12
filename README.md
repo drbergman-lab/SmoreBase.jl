@@ -47,7 +47,7 @@ samples = sampleSMPredictions(problem, uq)
 
 ## Implementation Status
 
-> For Claude Code sessions: this section is the authoritative record of what has been built. Update it as features are completed. See [PRD.md](PRD.md) for behavioral specifications and [progress.md](progress.md) for decision rationale.
+> For Claude Code sessions: this section is the authoritative record of what has been built. Update it as features are completed. See [PRD.md](PRD.md) for behavioral specifications.
 
 ### Completed
 
@@ -60,7 +60,7 @@ samples = sampleSMPredictions(problem, uq)
 - [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
 - [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over cm_param_sets); accepts a matrix `P0`, a single vector `P0` broadcast to every cm_param_set, or no `P0` (defaults to `median.(prior.distributions)`)
 - [x] `SMFitResult` — result type for SM fitting
-- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms; `fitResult` may be omitted, in which case it is computed internally via `fitSurrogate(problem; executor)`
+- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms; `fitResult` may be omitted, in which case it is computed internally via `fitSurrogate(problem; executor)`; warns on every degenerate CI (a `NaN` bound or zero width), switchable with `setDegenerateCIWarnings`
 - [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ
 - [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels; `GridCMSample` also accepts the per-dimension value vectors directly (`GridCMSample(axes...; names)`), building the Cartesian-product matrix instead of validating a pre-built one
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
