@@ -608,5 +608,11 @@ next to the MLE, or a zero-width sweep) and downstream consumers such as SmoreFi
 and warns at the source on every occurrence (no `maxlog`, by user decision) so all
 `quantifyUncertainty` users see it.
 
+Also warns on a `NaN` bound: -Inf log-likelihood next to the MLE makes the linear
+interpolation Inf/Inf, so that case yields NaN rather than zero width. Throttling is a global
+`Ref` with an exported setter `setDegenerateCIWarnings(::Bool)` (returns previous value), chosen
+over a kwarg because downstream packages (SmoreFit) call `quantifyUncertainty` internally, where
+a user-facing kwarg would have to be threaded through every caller.
+
 ### Status
 Complete.

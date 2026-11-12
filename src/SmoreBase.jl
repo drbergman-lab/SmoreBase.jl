@@ -54,7 +54,7 @@ export AbstractCMSample, GridCMSample, ScatteredCMSample, CMSample, reshapeToGri
 export AbstractCIInterpolator, LinearCIInterp, RBFCIInterp
 
 # Exports — public API
-export fitSurrogate, quantifyUncertainty, sampleSMParameters, sampleSMParametersInBounds, sampleSMPredictions
+export fitSurrogate, quantifyUncertainty, setDegenerateCIWarnings, sampleSMParameters, sampleSMParametersInBounds, sampleSMPredictions
 
 # Exports — plot wrappers
 export SMFitPlot

@@ -206,7 +206,8 @@
 - Confidence interval by Wilks' theorem: `CI = {θ_i : PL(θ_i) ≥ L* − 0.5 × χ²₁,α}`
   - `L*` = log-likelihood at the MLE (from `fitResult`)
   - For 95% CI: threshold = `L* − 1.92`
-  - If both bounds exist and `ci_lower == ci_upper`, emit `@warn` naming the parameter and CI value (every occurrence, no `maxlog`): a zero-width CI signals a degenerate profile
+  - If a bound is `NaN`, or both bounds exist and `ci_lower == ci_upper`, emit `@warn` naming the parameter and CI value (every occurrence, no `maxlog`): it signals a degenerate profile
+  - `setDegenerateCIWarnings(enabled::Bool)` (exported) toggles these warnings globally and returns the previous setting
 - `ProfileCurve{T<:Real}`:
   - `parameter_index::Int`, `parameter_name::String`
   - `profile_values::Vector{T}`, `log_likelihoods::Vector{T}`
