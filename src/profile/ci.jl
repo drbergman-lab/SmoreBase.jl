@@ -18,7 +18,7 @@ The previous setting, so it can be restored.
 ```julia
 prev = setDegenerateCIWarnings(false)
 try
-    uq = quantifyUncertainty(problem, ProfileLikelihood())
+    uq = quantifyUncertainty(ProfileLikelihood(), problem)
 finally
     setDegenerateCIWarnings(prev)
 end
