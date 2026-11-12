@@ -250,7 +250,7 @@
 - `CMSample(params::AbstractMatrix; names=nothing) -> AbstractCMSample` — convenience factory: builds a `GridCMSample` if the rows form a regular grid, else falls back to `ScatteredCMSample` (reported via `@info`)
 - Carrying `names` here means downstream consumers that only need CM parameter labels (e.g. SmoreFit's `buildPosterior`) don't need a separate `ParameterPrior` just for naming — that's now redundant unless the consumer also needs distributions (e.g. SmoreGSA's `runSensitivity`, which uses `cm_prior` for inverse-CDF sampling, not just names).
 - `GridCMSample(axes::AbstractVector{<:Real}...; names=nothing) -> GridCMSample` — build directly from per-dimension value vectors instead of a pre-built matrix:
-  - Each positional argument is the set of values used for one CM parameter; `params` is constructed as their Cartesian product (one row per combination)
+  - Each positional argument is the set of values used for one CM parameter; `params` is constructed as their Cartesian product (one row per combination, first axis varying fastest)
   - Each vector must contain unique values (`ArgumentError` otherwise) — this is the only validation needed, since a Cartesian product of vectors is a grid by construction; no grid-shape check like the matrix constructor's
   - Vectors need not be pre-sorted; `axes` stores each sorted
   - At least one axis vector is required; `GridCMSample()` throws `ArgumentError` rather than
@@ -260,7 +260,7 @@
 - `GridCMSample(params)` / `ScatteredCMSample(params)` without `names` auto-generate `"cm_1", ..., "cm_n"`.
 - `GridCMSample(params; names=["cm_a","cm_b"])` stores the supplied names; length must match `size(params, 2)`.
 - `CMSample(params; names=...)` threads `names` through to whichever concrete type it constructs.
-- `GridCMSample([1.0, 2.0], [0.1, 0.2])` matches `GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])`: the same rows (in any order), `axes`, and default `names`. Row order is not part of the contract — consumers locate a row by its values (`_gridIndices`), not its position — and the axes constructor varies the first axis fastest.
+- `GridCMSample([1.0, 2.0], [0.1, 0.2])` matches `GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])`: the same `axes`, default `names`, and set of rows. The row order differs, because the axes constructor varies the first axis fastest.
 - A vector with a repeated value (e.g. `[1.0, 1.0, 2.0]`) throws `ArgumentError`.
 - `GridCMSample()` (no axis vectors) throws `ArgumentError`.
 

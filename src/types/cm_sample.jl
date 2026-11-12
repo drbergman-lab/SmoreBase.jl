@@ -75,9 +75,9 @@ Build a `GridCMSample` from the per-dimension values directly, one vector per CM
 Throws `ArgumentError` if called with no axis vectors, if any vector has repeated values, or if
 `names` has the wrong length.
 
-The rows of `params` vary the first axis fastest, which need not match the row order of an
-equivalent matrix. Row order is not part of the `GridCMSample` contract: consumers locate a row by
-its values, not its position.
+The sample's `params` field holds one row per combination of axis values, with the first axis
+varying fastest. Anything paired with the sample row by row (such as one profile likelihood
+result per CM parameter set) must follow that order.
 
 # Example
 ```julia
