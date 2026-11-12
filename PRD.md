@@ -128,6 +128,7 @@
 **Behavioral specification:**
 - `SMFitProblem` — struct with fields `sm::AbstractSurrogateModel`, `data::AbstractCMData`, `prior::ParameterPrior`, `loss::AbstractLoss`
   - Keyword constructor: `SMFitProblem(sm, data, prior; loss = GaussianNLL())`
+  - Validation: with `GaussianNLL` and a `CMData` without `Σ`, every `σ` must be positive and finite, else `ArgumentError` naming the offending entries (σ = 0 at e.g. t = 0, or `NaN` from a single replicate, would make the likelihood infinite/NaN). Other losses and `Σ`-carrying data are not checked.
 - `_conditions(data::AbstractCMData) -> ConditionSpec` — derive experimental conditions from data
   - Default implementation: `ConditionSpec()` (single `"default"` condition)
   - `CMData` overrides with its `condition_labels` field
@@ -137,6 +138,7 @@
 **Acceptance criteria:**
 - `SMFitProblem(sm, data, prior)` stores `GaussianNLL()` as default loss.
 - `SMFitProblem(sm, data, prior; loss = CustomLoss(fn))` stores the custom loss.
+- `SMFitProblem` with `GaussianNLL` throws `ArgumentError` for any σ that is ≤ 0, `NaN`, or `Inf`; the same data with a `CustomLoss` constructs.
 - `_conditions(data::CMData)` returns a `ConditionSpec` matching `data.condition_labels`.
 
 ---
@@ -369,7 +371,7 @@ There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` 
 - `obs_times` selects save times, matched within `time_tol`; a missing time or an empty `obs_times` errors. Order and duplicates are left to the user.
 - Replicates must share save times; all parameter sets must share (selected) times.
 
-**Core change — `SMFitProblem` validation:** with `GaussianNLL`, a `CMData` without `Σ` must have every `σ` positive and finite; otherwise `SMFitProblem` throws an `ArgumentError` naming the entries. Other losses (e.g. `CustomLoss`) and data with a full covariance are not checked.
+**Core change:** zero/`NaN` σ are left in the data; `SMFitProblem` rejects them under `GaussianNLL` (see Feature: SMFitProblem).
 
 **Acceptance criteria:**
 - Extension tests (PCMM loaded, no PhysiCell project) cover aggregation, cell-type selection, time units, `obs_times`, single-replicate NaN σ, and every error path.
