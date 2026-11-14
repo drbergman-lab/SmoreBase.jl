@@ -1,6 +1,7 @@
 using SmoreBase
 using Distributions
 using OrdinaryDiffEq
+using PhysiCellModelManager   # activates SmoreBasePhysiCellModelManagerExt (no project needed)
 using RecipesBase
 using Random
 using Test
@@ -863,4 +864,75 @@ end
     @test_logs SmoreBase._computeCI([1.0, 1.0, 1.0], [-5.0, 0.0, -5.0], -1.92)
     @test_logs SmoreBase._computeCI([0.0, 1.0, 2.0], [-Inf, 0.0, -5.0], -1.92)
     @test setDegenerateCIWarnings(true) === false
+end
+
+# ── PhysiCellModelManager extension (no PhysiCell project needed) ──────────────
+
+@testset "PCMM extension: CMData from population series" begin
+    ext = Base.get_extension(SmoreBase, :SmoreBasePhysiCellModelManagerExt)
+    @test !isnothing(ext)
+    build(groups, labels; kw...) = ext._cmDataFromSeries(groups, labels; kw...)
+
+    t = [0.0, 1440.0, 2880.0, 4320.0]   # PhysiCell minutes
+    ser(a, b; time=t) = (time=time, cell_count=Dict("tumor" => a, "immune" => b))
+    g1 = [1 => ser([10, 20, 30, 40], [5, 6, 7, 8]), 2 => ser([10, 22, 34, 46], [5, 8, 7, 12])]
+    g2 = [3 => ser([10, 11, 12, 13], [5, 5, 9, 9]), 4 => ser([10, 13, 16, 19], [5, 7, 9, 11]),
+          5 => ser([10, 15, 20, 25], [5, 9, 9, 13])]
+
+    # defaults: all cell types (sorted), minutes, every save time; σ = 0 is allowed here
+    d = build([g1, g2], ["a", "b"])
+    @test size(d.μ) == (4, 2, 1, 2)
+    @test d.times == t
+    @test d.variable_labels == ["immune", "tumor"]
+    @test d.cm_param_set_labels == ["a", "b"]
+    @test d.μ[:, 2, 1, 2] ≈ [10, 13, 16, 19]
+    @test d.σ[2, 2, 1, 2] ≈ std([11, 13, 15])
+    @test d.σ[1, 1, 1, 1] == 0
+
+    # cell_types selection and order; time_unit; obs_times within tolerance
+    d = build([g1, g2], ["a", "b"]; cell_types=["tumor", "immune"], time_unit=:h,
+              obs_times=[24.0, 72.0 + 1e-9])
+    @test d.variable_labels == ["tumor", "immune"]
+    @test d.times ≈ [24.0, 72.0]
+    @test d.μ[:, 2, 1, 1] ≈ [7.0, 10.0]
+    @test d.σ[:, 2, 1, 1] ≈ [std([6, 8]), std([8, 12])]
+    @test build([g1], ["a"]; cell_types="tumor", time_unit=:d, obs_times=[2.0]).times == [2.0]
+    @test build([g1], ["a"]; time_unit=:hours).times ≈ [0, 24, 48, 72]
+
+    # a single replicate builds, with σ = NaN
+    d = build([g1[1:1]], ["a"])
+    @test all(isnan, d.σ) && d.μ[:, 2, 1, 1] == [10, 20, 30, 40]
+
+    # errors
+    @test_throws ArgumentError build([g1], ["a"]; obs_times=[30.0])           # not saved (minutes)
+    @test_throws ArgumentError build([g1], ["a"]; obs_times=Float64[])
+    @test_throws ArgumentError build([g1], ["a"]; time_unit=:fortnight)
+    @test_throws ArgumentError build([g1], ["a"]; cell_types="macrophage")
+    @test_throws ArgumentError build([g1], ["a"]; cell_types=:some)
+    @test_throws ArgumentError build([g1, Pair{Int,Any}[]], ["a", "b"])        # empty group
+    @test_throws ArgumentError build([g1], ["a", "b"])                         # label mismatch
+    bad_time = [g1[1], 9 => ser([1, 2, 3, 4], [1, 2, 3, 4]; time=[0.0, 1440.0, 2880.0, 4330.0])]
+    @test_throws ArgumentError build([bad_time], ["a"])
+    bad_roster = [g1[1], 9 => (time=t, cell_count=Dict("tumor" => [1, 2, 3, 4]))]
+    err = try build([bad_roster], ["a"]) catch e; e end
+    @test err isa ArgumentError && occursin("different cell types", err.msg)
+    short = [id => ser(s.cell_count["tumor"][1:3], s.cell_count["immune"][1:3]; time=t[1:3]) for (id, s) in g2]
+    @test_throws ArgumentError build([g1, short], ["a", "b"])
+    @test n_times(build([g1, short], ["a", "b"]; obs_times=[1440.0])) == 1
+end
+
+@testset "SMFitProblem rejects σ ≤ 0 or NaN under GaussianNLL" begin
+    sm    = CustomSurrogateModel(fn = _logistic)
+    prior = ParameterPrior([0.0, 0.0], [2.0, 10.0]; names = ["r", "K"])
+    t     = collect(0.0:1.0:3.0)
+    for bad in (0.0, NaN, -1.0, Inf)
+        σ = fill(0.1, 4); σ[1] = bad
+        data = CMData(μ = rand(4), σ = σ, times = t)
+        err = try SMFitProblem(sm, data, prior) catch e; e end
+        @test err isa ArgumentError && occursin("σ > 0", err.msg)
+        @test SMFitProblem(sm, data, prior; loss = CustomLoss((A, d, k) -> 0.0)) isa SMFitProblem
+    end
+    Σ = zeros(1, 1, 4, 1, 1); Σ[1, 1, :, 1, 1] .= 0.01
+    data = CMData(μ = rand(4), σ = zeros(4), Σ = Σ, times = t)
+    @test SMFitProblem(sm, data, prior) isa SMFitProblem   # σ unused with full covariance
 end
