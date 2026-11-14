@@ -35,6 +35,7 @@ src/
 │   ├── cm_data.jl          # CMData, AbstractCMData
 │   ├── conditions.jl       # ConditionSpec
 │   ├── loss.jl             # AbstractLoss, GaussianNLL, CustomLoss
+│   ├── uq_method.jl        # AbstractUQMethod, ProfileLikelihood (settings)
 │   ├── parameter_prior.jl  # ParameterPrior
 │   ├── results.jl          # SMFitResult, ProfileLikelihoodResult, ProfileCurve, SampledPredictions
 │   └── surrogate_model.jl  # AbstractSurrogateModel, ODESurrogateModel, CustomSurrogateModel

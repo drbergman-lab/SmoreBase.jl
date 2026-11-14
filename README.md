@@ -52,16 +52,17 @@ samples = sampleSMPredictions(problem, uq)
 ### Completed
 
 - [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_times, n_variables, n_conditions, n_cm_param_sets]`)
-- [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view; custom subtypes implement `_sliceCmParamSet`; documented in `docs/src/custom_data.md`
+- [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view with concretely typed array fields (type parameters, v0.5.2); custom subtypes implement `_sliceCmParamSet`; documented in `docs/src/custom_data.md`
 - [x] `ConditionSpec`, `ParameterPrior` — supporting types (`ParameterPrior` holds `Distributions.jl` priors; box bounds via `Uniform`)
 - [x] `ODESurrogateModel`, `CustomSurrogateModel` — surrogate model types with `_evaluate` dispatch; `CustomSurrogateModel` wraps any `(t, p, condition) -> Matrix` function (closed-form, numerical/PDE solve, lookup, …); `ODESurrogateModel.t0` configures where the ODE solve `tspan` starts (default `0.0`, independent of the requested observation times)
 - [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
-- [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types
+- [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types; `GaussianNLL` without covariance is a single allocation-free pass (v0.5.2: ≈ 17 ns vs ≈ 2,000 ns per `[3 × 1]` call, same results)
 - [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
 - [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over cm_param_sets); accepts a matrix `P0`, a single vector `P0` broadcast to every cm_param_set, or no `P0` (defaults to `median.(prior.distributions)`)
 - [x] `SMFitResult` — result type for SM fitting
 - [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms; `fitResult` may be omitted, in which case it is computed internally via `fitSurrogate(problem; executor)`; warns on every degenerate CI (a `NaN` bound or zero width), switchable with `setDegenerateCIWarnings`
-- [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ
+- [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ; `ProfileLikelihoodResult.method` records the `ProfileLikelihood` settings that produced it (v0.5.2)
+- [x] CI bound interpolation — `_buildBoundsInterpolant` returns a named callable `CIBoundsInterpolant` (v0.5.2), so results holding it save and load with JLD2
 - [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels; `GridCMSample` also accepts the per-dimension value vectors directly (`GridCMSample(axes...; names)`), building the Cartesian-product matrix instead of validating a pre-built one
 - [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
 - [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
