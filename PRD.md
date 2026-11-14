@@ -128,6 +128,7 @@
 **Behavioral specification:**
 - `SMFitProblem` — struct with fields `sm::AbstractSurrogateModel`, `data::AbstractCMData`, `prior::ParameterPrior`, `loss::AbstractLoss`
   - Keyword constructor: `SMFitProblem(sm, data, prior; loss = GaussianNLL())`
+  - Validation: with `GaussianNLL` and a `CMData` without `Σ`, every `σ` must be positive and finite, else `ArgumentError` naming the offending entries (σ = 0 at e.g. t = 0, or `NaN` from a single replicate, would make the likelihood infinite/NaN). Other losses and `Σ`-carrying data are not checked.
 - `_conditions(data::AbstractCMData) -> ConditionSpec` — derive experimental conditions from data
   - Default implementation: `ConditionSpec()` (single `"default"` condition)
   - `CMData` overrides with its `condition_labels` field
@@ -137,6 +138,7 @@
 **Acceptance criteria:**
 - `SMFitProblem(sm, data, prior)` stores `GaussianNLL()` as default loss.
 - `SMFitProblem(sm, data, prior; loss = CustomLoss(fn))` stores the custom loss.
+- `SMFitProblem` with `GaussianNLL` throws `ArgumentError` for any σ that is ≤ 0, `NaN`, or `Inf`; the same data with a `CustomLoss` constructs.
 - `_conditions(data::CMData)` returns a `ConditionSpec` matching `data.condition_labels`.
 
 ---
@@ -346,6 +348,40 @@ There is **no Makie extension**. Shipping opinionated `Makie.plot(r) -> Figure` 
 - All `apply_recipe` calls return non-empty results without errors.
 - Loading SmoreBase without any plotting backend does not error.
 - `docs/src/plotting.md` documents the Plots recipes and states there is no Makie extension (result types expose public fields for users who build their own).
+
+---
+
+### Feature: CMData from PhysiCellModelManager (PCMM extension)
+
+**One-line description:** Build `CMData`, and the matching `CMSample` of CM parameters, directly from PhysiCellModelManager.jl simulation output.
+
+**Priority:** Should-have
+
+**Behavioral specification:**
+- `PhysiCellModelManager` is a weak dependency; `SmoreBasePhysiCellModelManagerExt` activates on `using PhysiCellModelManager`. All PCMM-specific code lives in the extension: it adds methods to the existing `CMData` and `CMSample` functions and nothing to `src/`.
+- `CMData(T; cell_types=:all, include_dead=false, time_unit=:min, obs_times=nothing, time_tol=1e-6)` accepts:
+  - `Sampling`, `Trial`, or `PCMMOutput` — one CM parameter set per monad (deduplicated);
+  - `AbstractVector{<:Monad}` — one CM parameter set per monad;
+  - `Monad` — one CM parameter set from its replicates;
+  - `AbstractVector{<:Simulation}` — one CM parameter set; all simulations must belong to one monad (`ArgumentError` otherwise);
+  - `Simulation` — one CM parameter set from a single run.
+- Output shape `[n_times × n_cell_types × 1 × n_cm_param_sets]`; μ = replicate mean, σ = sample SD of the population count (`NaN` for a single replicate; 0 is kept).
+- Parameter sets are ordered as PCMM's `monadsTable` sorts the monads (by every varied parameter, first column primary); labels `"name=value, …"`, falling back to `"monad<id>"`.
+- `CMSample(T)` for `Sampling`/`Trial`/`PCMMOutput`/`Vector{Monad}` returns the numeric varied parameters as `[n_monads × n_varied]`, rows in the same order as `CMData(T)`'s parameter sets, columns named by PCMM short names (a grid gives a `GridCMSample`). `ArgumentError` for a single monad/simulation or when nothing numeric varies.
+- `cell_types`: `:all` (sorted names), a name, or a vector of names → CMData variables in that order; an unknown name errors listing the available ones. All simulations must have the same cell types.
+- `time_unit` (default `:min`, PhysiCell's native unit; also `:s`, `:h`, `:d`, `:w`, `:mo`, `:y`, matching PCMM's plotting symbols) sets the unit of `times` and `obs_times`.
+- `obs_times` selects save times, matched within `time_tol`; a missing time or an empty `obs_times` errors. Order and duplicates are left to the user.
+- Replicates must share save times; all parameter sets must share (selected) times.
+
+**Core change:** zero/`NaN` σ are left in the data; `SMFitProblem` rejects them under `GaussianNLL` (see Feature: SMFitProblem).
+
+**Acceptance criteria:**
+- Extension tests (PCMM loaded, no PhysiCell project) cover aggregation, cell-type selection, time units, `obs_times`, single-replicate NaN σ, and every error path.
+- On a real PCMM grid sampling, the result matches the hand-built CMData from the project script it replaces.
+
+**Out of scope (deferred):**
+- An "individual runs" mode (fit to each replicate instead of mean ± SD); needs a replicate-axis `AbstractCMData` subtype and a matching loss in core — separate feature.
+- Substrate or other non-population observables; multiple conditions (each call yields one condition).
 
 ---
 

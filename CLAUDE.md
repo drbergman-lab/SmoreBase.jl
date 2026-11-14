@@ -50,6 +50,7 @@ src/
 └── sampling.jl             # sampleSMPredictions
 ext/
 ├── SmoreBaseOrdinaryDiffEqExt.jl  # ODE solving; activated when OrdinaryDiffEq loaded
+├── SmoreBasePhysiCellModelManagerExt.jl  # CMData/CMSample from PCMM output; activated when PhysiCellModelManager loaded
 └── SmoreBasePlotsExt.jl           # RecipesBase recipes; activated when RecipesBase loaded
 test/
 └── runtests.jl
@@ -140,6 +141,7 @@ A feature is complete when **all** of the following are true:
 
 - Package entrypoint: `src/SmoreBase.jl` — add `include(...)` and update `export` when adding new source files
 - ODE extension: `ext/SmoreBaseOrdinaryDiffEqExt.jl` — activated by `using OrdinaryDiffEq`
+- PCMM extension: `ext/SmoreBasePhysiCellModelManagerExt.jl` — adds `CMData(::AbstractTrial)` / `CMSample(::AbstractTrial)` methods; all PCMM-specific code stays in the extension (nothing in `src/`)
 - Plots extension: `ext/SmoreBasePlotsExt.jl` — activated by loading `RecipesBase` (or any Plots.jl backend)
 - No Makie extension: Makie users build figures directly from the result types (see `docs/src/plotting.md`). Do not reintroduce a Makie extension — see PRD.md (Plotting) for the rationale.
 - `SMFitPlot` struct lives in `src/plots/fit_recipe.jl` (main package, not an extension) so the Plots extension can dispatch on it
@@ -150,4 +152,4 @@ A feature is complete when **all** of the following are true:
 - Always run Julia with `--project=.`
 - Preferred test command: `julia --project=. -e 'using Pkg; Pkg.test()'`
 - Do not edit `Manifest.toml` or add/bump dependencies without explicit approval.
-- `OrdinaryDiffEq` and `RecipesBase` are weak deps; users must load them explicitly to activate the respective extensions.
+- `OrdinaryDiffEq`, `RecipesBase` and `PhysiCellModelManager` are weak deps; users must load them explicitly to activate the respective extensions.
