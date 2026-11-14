@@ -72,11 +72,7 @@ SmoreBase.CMData(monads::AbstractVector{<:Monad}; kwargs...) =
 function SmoreBase.CMData(simulations::AbstractVector{<:Simulation}; kwargs...)
     isempty(simulations) && throw(ArgumentError("CMData: the vector of simulations is empty"))
     sim_ids = [s.id for s in simulations]
-    per_sim = [monadIDs(s) for s in simulations]
-    monad_ids = unique(reduce(vcat, per_sim))
-    any(isempty, per_sim) && throw(ArgumentError(
-        "CMData: cannot tell which monad simulations $(sim_ids) belong to, so cannot check that " *
-        "they are replicates of one CM parameter set; pass them one at a time or as their Monad"))
+    monad_ids = unique(reduce(vcat, [monadIDs(s) for s in simulations]))
     length(monad_ids) == 1 || throw(ArgumentError(
         "CMData: a vector of simulations is one CM parameter set, so they must come from one " *
         "monad; simulations $(sim_ids) belong to monads $(monad_ids). Pass the monads instead."))
@@ -125,10 +121,7 @@ end
 
 # (simulation ids per parameter set, labels) for a PCMM object.
 function _parameterSets(T::AbstractTrial)
-    if T isa Simulation
-        ids = monadIDs(T)
-        return [[T.id]], [isempty(ids) ? "sim$(T.id)" : "monad$(only(ids))"]
-    end
+    T isa Simulation && return [[T.id]], ["monad$(only(monadIDs(T)))"]
     T isa Monad && return [simulationIDs(T)], ["monad$(T.id)"]
     return _parameterSets(unique(monadIDs(T)))
 end
