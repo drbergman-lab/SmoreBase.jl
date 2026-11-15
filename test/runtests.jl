@@ -442,6 +442,7 @@ end
     @test uq.method === method
     @test_throws MethodError ProfileLikelihoodResult(uq.profiles, uq.fit_result, uq.times)
     @test_throws MethodError ProfileLikelihoodResult{Float64}(uq.profiles, uq.fit_result, uq.times)
+    @test_throws MethodError ProfileLikelihoodResult(uq.profiles, uq.fit_result, uq.times, nothing)
 
     for pc in uq.profiles
         # MLE value is always a grid point; its profile LL should match reference_ll to optimizer tolerance
