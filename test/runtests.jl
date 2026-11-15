@@ -1,6 +1,7 @@
 using SmoreBase
 using Distributions
 using ForwardDiff
+using JLD2
 using OrdinaryDiffEq
 using PhysiCellModelManager   # activates SmoreBasePhysiCellModelManagerExt (no project needed)
 using RecipesBase
@@ -891,6 +892,19 @@ end
     @test f2 isa Function
     @test f2([1.5, 0.15]) isa Tuple{Vector{Float64},Vector{Float64}}
     @test sprint(show, f2) == "CIBoundsInterpolant(2 SM parameters)"
+
+    # Saves with JLD2 without warnings and loads back as the same type, reproducing the bounds
+    mktempdir() do dir
+        path = joinpath(dir, "bounds.jld2")
+        @test_logs jldsave(path; f1, f2)
+        h1, h2 = load(path, "f1", "f2")
+        @test h1 isa SmoreBase.CIBoundsInterpolant
+        @test h2 isa SmoreBase.CIBoundsInterpolant
+        @test h1([2.0]) == f1([2.0])              # grid node
+        @test h1([1.5]) == f1([1.5])              # interior
+        @test h2([1.0, 0.1]) == f2([1.0, 0.1])    # grid node
+        @test h2([1.5, 0.15]) == f2([1.5, 0.15])  # interior
+    end
 
     # Unimplemented combination → ErrorException
     s = ScatteredCMSample([0.13 0.7; 0.42 0.2])
