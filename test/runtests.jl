@@ -292,6 +292,12 @@ end
     g = ForwardDiff.gradient(a -> SmoreBase._computeLoss(GaussianNLL(), reshape(a, 4, 2), slice3, 1), vec(A3))
     @test g ≈ vec((A3 .- μ3[:, :, 1, 2]) ./ σ3[:, :, 1, 2] .^ 2)
 
+    # Allocation-free once compiled; measured inside a function so only the call itself counts
+    lossBytes(A, s, ki) = (SmoreBase._computeLoss(GaussianNLL(), A, s, ki);
+                           @allocated SmoreBase._computeLoss(GaussianNLL(), A, s, ki))
+    @test lossBytes(μ_true, slice, 1) == 0
+    @test lossBytes(A3, slice3, 3) == 0
+
     # A prediction whose shape differs from the data's is an error, not a broadcast
     @test_throws DimensionMismatch SmoreBase._computeLoss(GaussianNLL(), A3[:, 1:1], slice3, 1)
     @test_throws BoundsError SmoreBase._computeLoss(GaussianNLL(), A3, slice3, 4)

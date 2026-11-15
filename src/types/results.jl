@@ -67,7 +67,7 @@ Result of profile likelihood UQ for one cm_param_set.
 - `times` — time grid from `CMData` (stored for use by `sampleSMPredictions`)
 - `method` — the `ProfileLikelihood` settings that produced these profiles (`n_points`,
   `confidence_level`, `bounds`), as passed to `quantifyUncertainty`; `nothing` for a result
-  built by hand with the three-argument constructor
+  built by hand with the three-argument constructor, which is slated for removal in v1.0
 """
 struct ProfileLikelihoodResult{T<:Real} <: SMUQResult
     profiles::Vector{ProfileCurve{T}}
@@ -77,6 +77,7 @@ struct ProfileLikelihoodResult{T<:Real} <: SMUQResult
 end
 
 # Three-argument forms (no recorded settings), kept for results assembled by hand.
+# To be removed in v1.0, so every result carries the settings that produced it.
 ProfileLikelihoodResult{T}(profiles, fit_result, times) where {T<:Real} =
     ProfileLikelihoodResult{T}(profiles, fit_result, times, nothing)
 ProfileLikelihoodResult(profiles, fit_result, times) =

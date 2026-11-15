@@ -7,10 +7,10 @@ Assistant professor working on computational modeling of cancer-immune interacti
 
 | Document | Purpose |
 |----------|---------|
-| [README.md](README.md) | Project overview + **Implementation Status** (what is built, what remains) |
+| [README.md](README.md) | Project overview and **Roadmap** (what remains) |
 | [PRD.md](PRD.md) | Behavioral specification for every feature — acceptance criteria and edge cases |
 
-Start any feature session by reading the relevant PRD entry and the Implementation Status section of `README.md`.
+Start any feature session by reading the relevant PRD entry and the Roadmap section of `README.md`.
 
 ## Project Overview
 
@@ -100,7 +100,7 @@ The human reviews diffs and stages files themselves. Do not run `git add`, `git 
 2. Wait for human approval, then update PRD.md to include the new feature or changes.
 3. Create the feature branch: `git checkout -b feature/<desc>`.
 4. Implement in the feature branch only.
-5. Update [README.md](README.md) Implementation Status when a feature is complete.
+5. Remove the feature from the [README.md](README.md) Roadmap when it is complete.
 6. Trim PRD.md to reflect the final implementation before merging.
 7. Tell the human the branch is ready; they will review, stage, and commit.
 
@@ -134,7 +134,7 @@ A feature is complete when **all** of the following are true:
 
 1. **Tests pass:** `julia --project=. -e 'using Pkg; Pkg.test()'` runs green.
 2. **Docstrings written:** Every exported function has a docstring with description, arguments, return value, and at least one example.
-3. **README updated:** Implementation Status marks the feature complete.
+3. **README updated:** the Roadmap no longer lists the feature.
 4. **PRD reflects reality:** If implementation deviated, update the PRD entry.
 5. **No regressions:** Full test suite has no new failures.
 
