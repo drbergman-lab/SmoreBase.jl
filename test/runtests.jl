@@ -438,10 +438,10 @@ end
 
     @test uq isa ProfileLikelihoodResult
     @test length(uq.profiles) == 2
-    # The settings that produced the profiles are recorded; hand-built results record none
+    # The settings that produced the profiles are recorded, and a result can't be built without them
     @test uq.method === method
-    @test ProfileLikelihoodResult(uq.profiles, uq.fit_result, uq.times).method === nothing
-    @test ProfileLikelihoodResult{Float64}(uq.profiles, uq.fit_result, uq.times).method === nothing
+    @test_throws MethodError ProfileLikelihoodResult(uq.profiles, uq.fit_result, uq.times)
+    @test_throws MethodError ProfileLikelihoodResult{Float64}(uq.profiles, uq.fit_result, uq.times)
 
     for pc in uq.profiles
         # MLE value is always a grid point; its profile LL should match reference_ll to optimizer tolerance

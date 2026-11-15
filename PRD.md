@@ -222,8 +222,8 @@
   - `profiles::Vector{ProfileCurve{T}}`
   - `fit_result::SMFitResult{T}`
   - `times::Vector{T}`
-  - `method::Union{Nothing,ProfileLikelihood}` — the settings `quantifyUncertainty` was called with, so a result records what produced it (downstream, SmoreFit's posterior reads both the data-side and the CM-side profile settings from here). The three-argument constructors `ProfileLikelihoodResult(profiles, fit_result, times)` and `ProfileLikelihoodResult{T}(…)` remain for results assembled by hand and store `nothing`; they are slated for removal in v1.0, so every result carries its settings.
-  - Files written with JLD2 before 0.5.2 lack `method`; they load with `typemap = Dict("SmoreBase.ProfileLikelihoodResult" => JLD2.Upgrade(ProfileLikelihoodResult{Float64}))` plus a `JLD2.rconvert(::Type{ProfileLikelihoodResult{Float64}}, nt::NamedTuple)` method calling the three-argument constructor.
+  - `method::Union{Nothing,ProfileLikelihood}` — the settings `quantifyUncertainty` was called with, so a result records what produced it (downstream, SmoreFit's posterior reads both the data-side and the CM-side profile settings from here). There is no three-argument constructor: a result assembled by hand passes its settings too, so every result carries what produced it.
+  - Files written with JLD2 before 0.5.2 lack `method`; they load with `typemap = Dict("SmoreBase.ProfileLikelihoodResult" => JLD2.Upgrade(ProfileLikelihoodResult{Float64}))` plus a `JLD2.rconvert(::Type{ProfileLikelihoodResult{Float64}}, nt::NamedTuple)` method returning `ProfileLikelihoodResult{Float64}(nt.profiles, nt.fit_result, nt.times, nothing)`.
 
 **Acceptance criteria:**
 - For a well-identified parameter, `ci_lower < fitted_value < ci_upper`.

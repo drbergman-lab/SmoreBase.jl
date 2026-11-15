@@ -50,4 +50,3 @@ samples = sampleSMPredictions(problem, uq)
 - [ ] `ODESurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions; relatedly, allow `pre_processor` to alter `y0` itself (not just `p`/`condition`) for conditions that change an initial compartment value (e.g. immunotherapy). Scoped to `ODESurrogateModel` only — `CustomSurrogateModel` closures own their own initial condition — see PRD.md
 - [ ] Individual-runs CM data — fit to each replicate rather than mean ± SD (replicate-axis `AbstractCMData` subtype + matching loss); the PCMM extension would then gain a kwarg to choose summary stats vs individual runs — see PRD.md
 - [ ] Pipeline persistence — HDF5 serialization/deserialization of `CMData`, `SMFitResult`, `ProfileLikelihoodResult`, `SampledPredictions`
-- [ ] v1.0: remove the three-argument `ProfileLikelihoodResult` constructors, so every result records the `ProfileLikelihood` settings that produced it
