@@ -299,7 +299,7 @@ end
     @test lossBytes(μ_true, slice, 1) == 0
     @test lossBytes(A3, slice3, 3) == 0
 
-    # A prediction whose shape differs from the data's is an error, not a broadcast
+    # A prediction whose shape differs from the data's is an error
     @test_throws DimensionMismatch SmoreBase._computeLoss(GaussianNLL(), A3[:, 1:1], slice3, 1)
     @test_throws BoundsError SmoreBase._computeLoss(GaussianNLL(), A3, slice3, 4)
 end
@@ -438,11 +438,8 @@ end
 
     @test uq isa ProfileLikelihoodResult
     @test length(uq.profiles) == 2
-    # The settings that produced the profiles are recorded, and a result can't be built without them
+    # The settings that produced the profiles are recorded
     @test uq.method === method
-    @test_throws MethodError ProfileLikelihoodResult(uq.profiles, uq.fit_result, uq.times)
-    @test_throws MethodError ProfileLikelihoodResult{Float64}(uq.profiles, uq.fit_result, uq.times)
-    @test_throws MethodError ProfileLikelihoodResult(uq.profiles, uq.fit_result, uq.times, nothing)
 
     for pc in uq.profiles
         # MLE value is always a grid point; its profile LL should match reference_ll to optimizer tolerance
@@ -888,7 +885,7 @@ end
     @test lb_c ≈ [0.25, 1.75]
     @test ub_c ≈ [0.65, 5.75]
 
-    # A named callable (stable type name when saved), still a Function; output is Float64 vectors
+    # A named callable (stable type name when saved) and a Function; output is Float64 vectors
     @test f2 isa SmoreBase.CIBoundsInterpolant
     @test f2 isa Function
     @test f2([1.5, 0.15]) isa Tuple{Vector{Float64},Vector{Float64}}

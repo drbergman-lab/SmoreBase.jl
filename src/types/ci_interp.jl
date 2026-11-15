@@ -38,9 +38,8 @@ Callable returned by `_buildBoundsInterpolant` for a `GridCMSample`:
 `get_bounds(θ_CM::AbstractVector) -> (lb::Vector{Float64}, ub::Vector{Float64})`, the SM
 parameter CI bounds interpolated at CM point `θ_CM`.
 
-Holds one interpolant per SM parameter per bound (`itp_lb`, `itp_ub`). It is a named struct
-rather than a closure so that a saved result holding it (e.g. written with JLD2) refers to it
-by a stable type name.
+Holds one interpolant per SM parameter per bound (`itp_lb`, `itp_ub`). As a named struct, a
+saved result holding it (e.g. written with JLD2) refers to it by a stable type name.
 """
 struct CIBoundsInterpolant{I} <: Function
     itp_lb::Vector{I}

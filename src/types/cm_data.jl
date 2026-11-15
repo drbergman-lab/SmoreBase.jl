@@ -370,7 +370,7 @@ The array types are type parameters (`M`, `S`, `C`), so field access is type-sta
 `_computeLoss` does not dispatch at run time. They are inferred by the positional constructor
 `CMDataSlice(μ, σ, Σ, times, variable_labels, condition_labels, cm_param_set_label)`;
 `CMDataSlice{T}(…)` converts the arrays to element type `T` first. In method signatures,
-`CMDataSlice{Float64}` still matches every `Float64` slice.
+`CMDataSlice{Float64}` matches every `Float64` slice.
 
 # Fields
 - `μ` — mean view `[n_times, n_variables, n_conditions]`
