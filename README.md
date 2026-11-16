@@ -45,30 +45,7 @@ samples = sampleSMPredictions(problem, uq)
 
 ---
 
-## Implementation Status
-
-> For Claude Code sessions: this section is the authoritative record of what has been built. Update it as features are completed. See [PRD.md](PRD.md) for behavioral specifications.
-
-### Completed
-
-- [x] `CMData` / `AbstractCMData` — summary statistics type for CM observations (4-D layout: `[n_times, n_variables, n_conditions, n_cm_param_sets]`)
-- [x] `CMDataSlice` / `AbstractCMDataSlice` — zero-copy per-param-set view; custom subtypes implement `_sliceCmParamSet`; documented in `docs/src/custom_data.md`
-- [x] `ConditionSpec`, `ParameterPrior` — supporting types (`ParameterPrior` holds `Distributions.jl` priors; box bounds via `Uniform`)
-- [x] `ODESurrogateModel`, `CustomSurrogateModel` — surrogate model types with `_evaluate` dispatch; `CustomSurrogateModel` wraps any `(t, p, condition) -> Matrix` function (closed-form, numerical/PDE solve, lookup, …); `ODESurrogateModel.t0` configures where the ODE solve `tspan` starts (default `0.0`, independent of the requested observation times)
-- [x] ODE extension (`SmoreBaseOrdinaryDiffEqExt`) — ODE solving via `OrdinaryDiffEq.jl`
-- [x] `AbstractLoss`, `GaussianNLL`, `CustomLoss` — loss function types
-- [x] `SMFitProblem` — bundles surrogate model, data, prior, and loss; passed to `fitSurrogate`, `quantifyUncertainty`, and `sampleSMPredictions`
-- [x] `fitSurrogate` — fit SM to CM output data via bounded LBFGS optimization (parallel over cm_param_sets); accepts a matrix `P0`, a single vector `P0` broadcast to every cm_param_set, or no `P0` (defaults to `median.(prior.distributions)`)
-- [x] `SMFitResult` — result type for SM fitting
-- [x] UQ of SM parameters — `ProfileLikelihood` method; `quantifyUncertainty(method, problem, fitResult, ...)` dispatch; MLE-anchored grid with proportional split and outward warm-start; batched over all cm_param_sets by default, with opt-in single-index and explicit-subset forms; `fitResult` may be omitted, in which case it is computed internally via `fitSurrogate(problem; executor)`; warns on every degenerate CI (a `NaN` bound or zero width), switchable with `setDegenerateCIWarnings`
-- [x] `ProfileLikelihoodResult`, `ProfileCurve` — result types for UQ
-- [x] `AbstractCMSample`, `GridCMSample`, `ScatteredCMSample`, `CMSample` — cm_param_set layout, carrying `names` (auto-generated or user-supplied) for consumers that only need labels; `GridCMSample` also accepts the per-dimension value vectors directly (`GridCMSample(axes...; names)`), building the Cartesian-product matrix instead of validating a pre-built one
-- [x] `sampleSMPredictions` — LHS-based MC sampling within UQ-defined parameter region
-- [x] `SampledPredictions` — result type for prediction sampling (stores `times` for standalone plotting)
-- [x] Plots extension (`SmoreBasePlotsExt`) — `plot(SMFitPlot(sm, data, fit))`, `plot(fit_result)`, `plot(uq_result)`, `plot(sampled_preds)`; activated by loading `RecipesBase`
-- [x] PCMM extension (`SmoreBasePhysiCellModelManagerExt`) — `CMData(sampling_or_trial_or_monad; cell_types, time_unit, obs_times, …)` builds replicate mean/SD of population counts from PhysiCellModelManager.jl output, and `CMSample(sampling)` the matching varied-parameter matrix; activated by `using PhysiCellModelManager`. `SMFitProblem` now rejects σ ≤ 0 or NaN under `GaussianNLL`
-
-### Remaining
+## Roadmap
 
 - [ ] `ODESurrogateModel.y0` — extend to `Dict{String,Vector{Float64}}` for condition-specific initial conditions; relatedly, allow `pre_processor` to alter `y0` itself (not just `p`/`condition`) for conditions that change an initial compartment value (e.g. immunotherapy). Scoped to `ODESurrogateModel` only — `CustomSurrogateModel` closures own their own initial condition — see PRD.md
 - [ ] Individual-runs CM data — fit to each replicate rather than mean ± SD (replicate-axis `AbstractCMData` subtype + matching loss); the PCMM extension would then gain a kwarg to choose summary stats vs individual runs — see PRD.md

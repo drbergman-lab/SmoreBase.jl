@@ -65,11 +65,15 @@ Result of profile likelihood UQ for one cm_param_set.
 - `profiles` — one `ProfileCurve` per SM parameter; each curve is self-contained
 - `fit_result` — the `SMFitResult` used as the MLE reference (carries `prior` and initial fit)
 - `times` — time grid from `CMData` (stored for use by `sampleSMPredictions`)
+- `method` — the `ProfileLikelihood` settings that produced these profiles (`n_points`,
+  `confidence_level`, `bounds`), as passed to `quantifyUncertainty`; required, so a result
+  built by hand must supply the settings too
 """
 struct ProfileLikelihoodResult{T<:Real} <: SMUQResult
     profiles::Vector{ProfileCurve{T}}
     fit_result::SMFitResult{T}
     times::Vector{T}
+    method::ProfileLikelihood
 end
 
 """

@@ -46,13 +46,11 @@ function _computeLoss(
     data::AbstractCMDataSlice,
     ki::Int,
 )
-    μ_view = @view _mean(data)[:, :, ki]
-    σ_view = @view _sd(data)[:, :, ki]
     Σ = _cov(data)
     if isnothing(Σ)
-        return 0.5 * sum((A_pred .- μ_view) .^ 2 ./ σ_view .^ 2) +
-               0.5 * sum(log.(2π .* σ_view .^ 2))
+        return _gaussianNLLIndependent(A_pred, _mean(data), _sd(data), ki)
     else
+        μ_view = @view _mean(data)[:, :, ki]
         nll = 0.0
         n_t = size(A_pred, 1)
         for ti in 1:n_t
@@ -62,6 +60,28 @@ function _computeLoss(
         end
         return nll
     end
+end
+
+# Independent-noise Gaussian NLL for condition `ki`:
+# `0.5 * Σ (A_pred - μ)² / σ² + 0.5 * Σ log(2π σ²)`, in one column-major pass (times fastest,
+# then variables) with no temporary arrays. The squared-residual accumulator takes `A_pred`'s
+# element type, so ForwardDiff `Dual`s pass through during fitting.
+function _gaussianNLLIndependent(A_pred::AbstractMatrix, μ::AbstractArray, σ::AbstractArray, ki::Int)
+    rows, cols = axes(A_pred)
+    (rows, cols) == (axes(μ, 1), axes(μ, 2)) == (axes(σ, 1), axes(σ, 2)) || throw(DimensionMismatch(
+        "prediction has size $(size(A_pred)), but the data's mean and sd have " *
+        "$((size(μ, 1), size(μ, 2))) and $((size(σ, 1), size(σ, 2))) per condition"
+    ))
+    checkbounds(μ, rows, cols, ki)
+    checkbounds(σ, rows, cols, ki)
+    sq = zero(float(promote_type(eltype(A_pred), eltype(μ), eltype(σ))))
+    lg = zero(float(eltype(σ)))
+    @inbounds for j in cols, i in rows
+        s   = σ[i, j, ki]
+        sq += (A_pred[i, j] - μ[i, j, ki])^2 / s^2
+        lg += log(2π * s^2)
+    end
+    return 0.5 * sq + 0.5 * lg
 end
 
 function _computeLoss(loss::CustomLoss, A_pred, data::AbstractCMDataSlice, ki::Int)

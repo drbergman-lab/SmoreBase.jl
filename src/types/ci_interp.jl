@@ -32,10 +32,36 @@ struct RBFCIInterp <: AbstractCIInterpolator end
 # ── implementations ─────────────────────────────────────────────────────────────────────
 
 """
+    CIBoundsInterpolant{I} <: Function
+
+Callable returned by `_buildBoundsInterpolant` for a `GridCMSample`:
+`get_bounds(θ_CM::AbstractVector) -> (lb::Vector{Float64}, ub::Vector{Float64})`, the SM
+parameter CI bounds interpolated at CM point `θ_CM`.
+
+Holds one interpolant per SM parameter per bound (`itp_lb`, `itp_ub`). As a named struct, a
+saved result holding it (e.g. written with JLD2) refers to it by a stable type name.
+"""
+struct CIBoundsInterpolant{I} <: Function
+    itp_lb::Vector{I}
+    itp_ub::Vector{I}
+end
+
+function (f::CIBoundsInterpolant)(θ_CM::AbstractVector)
+    lb = [itp(θ_CM...) for itp in f.itp_lb]
+    ub = [itp(θ_CM...) for itp in f.itp_ub]
+    return lb, ub
+end
+
+Base.show(io::IO, f::CIBoundsInterpolant) =
+    print(io, "CIBoundsInterpolant(", length(f.itp_lb), " SM parameters)")
+Base.show(io::IO, ::MIME"text/plain", f::CIBoundsInterpolant) = show(io, f)
+
+"""
     _buildBoundsInterpolant(layout, lb_table, ub_table, method) -> get_bounds
 
 Return a callable `get_bounds(θ_CM::AbstractVector) -> (lb::Vector, ub::Vector)` that
-interpolates SM parameter CI bounds at an arbitrary CM parameter point.
+interpolates SM parameter CI bounds at an arbitrary CM parameter point. For a `GridCMSample`
+with `LinearCIInterp` this is a `CIBoundsInterpolant`.
 
 `lb_table` and `ub_table` are `[n_cm_param_sets × n_sm_params]` — rows correspond to rows of
 `layout.params`.
@@ -46,26 +72,14 @@ function _buildBoundsInterpolant(
     ub_table :: Matrix{Float64},
     ::LinearCIInterp,
 )
-    axes = layout.axes
-    n_sm = size(lb_table, 2)
-
-    # Build one Interpolations.jl interpolant per SM parameter per bound.
-    # `reshapeToGrid` scatters each per-cm_param_set-row column onto the grid.
-    # Stored as Vector{Any} because the concrete interpolant type varies with n_cm.
-    itp_lb = Vector{Any}(undef, n_sm)
-    itp_ub = Vector{Any}(undef, n_sm)
-    for j in 1:n_sm
-        grid_lb = reshapeToGrid(layout, lb_table[:, j])
-        grid_ub = reshapeToGrid(layout, ub_table[:, j])
-        itp_lb[j] = interpolate(Tuple(axes), grid_lb, Gridded(Linear()))
-        itp_ub[j] = interpolate(Tuple(axes), grid_ub, Gridded(Linear()))
-    end
-
-    return function get_bounds(θ_CM::AbstractVector)
-        lb = [itp_lb[j](θ_CM...) for j in 1:n_sm]
-        ub = [itp_ub[j](θ_CM...) for j in 1:n_sm]
-        return lb, ub
-    end
+    # One Interpolations.jl interpolant per SM parameter per bound. `reshapeToGrid` scatters
+    # each per-cm_param_set-row column onto the grid.
+    grid_axes = Tuple(layout.axes)
+    itp(col) = interpolate(grid_axes, reshapeToGrid(layout, col), Gridded(Linear()))
+    return CIBoundsInterpolant(
+        [itp(lb_table[:, j]) for j in axes(lb_table, 2)],
+        [itp(ub_table[:, j]) for j in axes(ub_table, 2)],
+    )
 end
 
 # Catch-all: unimplemented combination.

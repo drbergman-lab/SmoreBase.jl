@@ -1,5 +1,7 @@
 using SmoreBase
 using Distributions
+using ForwardDiff
+using JLD2
 using OrdinaryDiffEq
 using PhysiCellModelManager   # activates SmoreBasePhysiCellModelManagerExt (no project needed)
 using RecipesBase
@@ -272,6 +274,52 @@ end
     # Perturbed prediction → higher loss
     L_perturbed = SmoreBase._computeLoss(GaussianNLL(), μ_true .+ 1.0, slice, 1)
     @test L_perturbed > L_exact
+
+    # Same value as the broadcast formula, on a multi-variable, multi-condition slice
+    Random.seed!(3)
+    μ3 = rand(4, 2, 3, 2); σ3 = 0.1 .+ rand(4, 2, 3, 2)
+    data3 = CMData(μ = μ3, σ = σ3, times = [1.0, 2.0, 3.0, 4.0], variables = 2, conditions = 3,
+                   cm_param_sets = 2, dim_order = [:times, :variables, :conditions, :cm_param_sets])
+    slice3 = SmoreBase._sliceCmParamSet(data3, 2)
+    A3 = rand(4, 2)
+    for ki in 1:3
+        μk, σk = μ3[:, :, ki, 2], σ3[:, :, ki, 2]
+        @test SmoreBase._computeLoss(GaussianNLL(), A3, slice3, ki) ≈
+              0.5 * sum((A3 .- μk) .^ 2 ./ σk .^ 2) + 0.5 * sum(log.(2π .* σk .^ 2))
+    end
+
+    # Type-stable on a CMDataSlice, and ForwardDiff Duals pass through (gradient (A - μ) / σ²)
+    @test (@inferred SmoreBase._computeLoss(GaussianNLL(), A3, slice3, 1)) isa Float64
+    g = ForwardDiff.gradient(a -> SmoreBase._computeLoss(GaussianNLL(), reshape(a, 4, 2), slice3, 1), vec(A3))
+    @test g ≈ vec((A3 .- μ3[:, :, 1, 2]) ./ σ3[:, :, 1, 2] .^ 2)
+
+    # Allocation-free once compiled; measured inside a function so only the call itself counts
+    lossBytes(A, s, ki) = (SmoreBase._computeLoss(GaussianNLL(), A, s, ki);
+                           @allocated SmoreBase._computeLoss(GaussianNLL(), A, s, ki))
+    @test lossBytes(μ_true, slice, 1) == 0
+    @test lossBytes(A3, slice3, 3) == 0
+
+    # A prediction whose shape differs from the data's is an error
+    @test_throws DimensionMismatch SmoreBase._computeLoss(GaussianNLL(), A3[:, 1:1], slice3, 1)
+    @test_throws BoundsError SmoreBase._computeLoss(GaussianNLL(), A3, slice3, 4)
+end
+
+@testset "CMDataSlice" begin
+    data  = CMData(μ = rand(3, 4), σ = ones(3, 4), times = [1.0, 2.0, 3.0], cm_param_sets = 4)
+    slice = SmoreBase._sliceCmParamSet(data, 2)
+    # Concrete field types: the array types are type parameters
+    @test isconcretetype(typeof(slice))
+    @test slice isa CMDataSlice{Float64}
+    @test slice.μ isa SubArray{Float64,3}
+    @test slice.Σ === nothing
+
+    # Positional constructor infers the parameters; CMDataSlice{T} converts element types
+    s2 = CMDataSlice(slice.μ, slice.σ, nothing, slice.times, nothing, nothing, "x")
+    @test typeof(s2) == typeof(slice)
+    s3 = CMDataSlice{Float64}(ones(Int, 3, 1, 1), ones(Int, 3, 1, 1), nothing, [1.0, 2.0, 3.0],
+                              nothing, nothing, nothing)
+    @test s3 isa CMDataSlice{Float64}
+    @test eltype(s3.μ) == Float64
 end
 
 @testset "CustomLoss" begin
@@ -390,6 +438,8 @@ end
 
     @test uq isa ProfileLikelihoodResult
     @test length(uq.profiles) == 2
+    # The settings that produced the profiles are recorded
+    @test uq.method === method
 
     for pc in uq.profiles
         # MLE value is always a grid point; its profile LL should match reference_ll to optimizer tolerance
@@ -473,6 +523,7 @@ end
     uq_all = quantifyUncertainty(method, prob, result)
     @test uq_all isa Vector{<:ProfileLikelihoodResult}
     @test length(uq_all) == n_ps
+    @test all(u -> u.method === method, uq_all)
 
     # Explicit single index -> bare ProfileLikelihoodResult, matching the corresponding entry above.
     uq_2 = quantifyUncertainty(method, prob, result, 2)
@@ -833,6 +884,25 @@ end
     lb_c, ub_c = f2([1.5, 0.15])
     @test lb_c ≈ [0.25, 1.75]
     @test ub_c ≈ [0.65, 5.75]
+
+    # A named callable (stable type name when saved) and a Function; output is Float64 vectors
+    @test f2 isa SmoreBase.CIBoundsInterpolant
+    @test f2 isa Function
+    @test f2([1.5, 0.15]) isa Tuple{Vector{Float64},Vector{Float64}}
+    @test sprint(show, f2) == "CIBoundsInterpolant(2 SM parameters)"
+
+    # Saves with JLD2 without warnings and loads back as the same type, reproducing the bounds
+    mktempdir() do dir
+        path = joinpath(dir, "bounds.jld2")
+        @test_logs jldsave(path; f1, f2)
+        h1, h2 = load(path, "f1", "f2")
+        @test h1 isa SmoreBase.CIBoundsInterpolant
+        @test h2 isa SmoreBase.CIBoundsInterpolant
+        @test h1([2.0]) == f1([2.0])              # grid node
+        @test h1([1.5]) == f1([1.5])              # interior
+        @test h2([1.0, 0.1]) == f2([1.0, 0.1])    # grid node
+        @test h2([1.5, 0.15]) == f2([1.5, 0.15])  # interior
+    end
 
     # Unimplemented combination → ErrorException
     s = ScatteredCMSample([0.13 0.7; 0.42 0.2])

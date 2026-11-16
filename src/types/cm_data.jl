@@ -359,12 +359,18 @@ _cmParamSetLabels(d::CMData)        = d.cm_param_set_labels
 # ── CMDataSlice ───────────────────────────────────────────────────────────────
 
 """
-    CMDataSlice{T<:Real} <: AbstractCMDataSlice
+    CMDataSlice{T<:Real, M, S, C} <: AbstractCMDataSlice
 
 A zero-copy view into a single param-set of a `CMData` container. Fields `μ`, `σ`,
 and (optionally) `Σ` are `SubArray` views into the parent arrays — no data is copied.
 
 Created by `_sliceCmParamSet(data::CMData, pi)`.
+
+The array types are type parameters (`M`, `S`, `C`), so field access is type-stable and
+`_computeLoss` does not dispatch at run time. They are inferred by the positional constructor
+`CMDataSlice(μ, σ, Σ, times, variable_labels, condition_labels, cm_param_set_label)`;
+`CMDataSlice{T}(…)` converts the arrays to element type `T` first. In method signatures,
+`CMDataSlice{Float64}` matches every `Float64` slice.
 
 # Fields
 - `μ` — mean view `[n_times, n_variables, n_conditions]`
@@ -374,14 +380,42 @@ Created by `_sliceCmParamSet(data::CMData, pi)`.
 - `variable_labels`, `condition_labels` — shared references to parent label vectors, or `nothing`
 - `cm_param_set_label` — label string for this param-set, or `nothing`
 """
-struct CMDataSlice{T<:Real} <: AbstractCMDataSlice
-    μ::AbstractArray{T,3}                       # [n_times, n_variables, n_conditions]
-    σ::AbstractArray{T,3}
-    Σ::Union{Nothing,AbstractArray{T,4}}        # [n_variables, n_variables, n_times, n_conditions]
+struct CMDataSlice{
+    T<:Real,
+    M<:AbstractArray{T,3},
+    S<:AbstractArray{T,3},
+    C<:Union{Nothing,AbstractArray{T,4}},
+} <: AbstractCMDataSlice
+    μ::M                                        # [n_times, n_variables, n_conditions]
+    σ::S
+    Σ::C                                        # [n_variables, n_variables, n_times, n_conditions]
     times::Union{Nothing,Vector{T}}
     variable_labels::Union{Nothing,Vector{String}}
     condition_labels::Union{Nothing,Vector{String}}
     cm_param_set_label::Union{Nothing,String}
+
+    function CMDataSlice(
+        μ::AbstractArray{T,3},
+        σ::AbstractArray{T,3},
+        Σ::Union{Nothing,AbstractArray{T,4}},
+        times,
+        variable_labels,
+        condition_labels,
+        cm_param_set_label,
+    ) where {T<:Real}
+        return new{T,typeof(μ),typeof(σ),typeof(Σ)}(
+            μ, σ, Σ, times, variable_labels, condition_labels, cm_param_set_label,
+        )
+    end
+end
+
+function CMDataSlice{T}(μ, σ, Σ, times, variable_labels, condition_labels, cm_param_set_label) where {T<:Real}
+    return CMDataSlice(
+        convert(AbstractArray{T,3}, μ),
+        convert(AbstractArray{T,3}, σ),
+        isnothing(Σ) ? nothing : convert(AbstractArray{T,4}, Σ),
+        times, variable_labels, condition_labels, cm_param_set_label,
+    )
 end
 
 """

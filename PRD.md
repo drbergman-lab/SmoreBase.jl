@@ -31,7 +31,9 @@
   - `variable_labels::Vector{String}` — names of observable output variables
   - `condition_labels::Vector{String}` — labels for experimental conditions
   - `cm_param_set_labels::Vector{String}` — labels for CM parameter vectors (one SM fit per cm_param_set)
-- `CMDataSlice{T<:Real} <: AbstractCMDataSlice` — zero-copy view into a single param-set of a `CMData`; fields `μ`, `σ`, `Σ` are `SubArray` views; created by `_sliceCmParamSet(data::CMData, pi)`.
+- `CMDataSlice{T<:Real, M, S, C} <: AbstractCMDataSlice` — zero-copy view into a single param-set of a `CMData`; fields `μ`, `σ`, `Σ` are `SubArray` views; created by `_sliceCmParamSet(data::CMData, pi)`.
+  - The array types are type parameters (`M<:AbstractArray{T,3}` for `μ`, `S` for `σ`, `C<:Union{Nothing,AbstractArray{T,4}}` for `Σ`), so field access is type-stable and the loss does not dispatch at run time.
+  - The positional constructor `CMDataSlice(μ, σ, Σ, times, variable_labels, condition_labels, cm_param_set_label)` infers them; `CMDataSlice{T}(…)` converts the arrays to element type `T` first. `CMDataSlice{Float64}` matches every `Float64` slice in method signatures.
 - Note: `CMData` holds CM-generated output only. Real-world observational data enters the pipeline in `SmoreFit`, not here.
 - The keyword constructor accepts both Unicode and ASCII aliases:
   - `μ` or `mean` — mean observations
@@ -104,7 +106,7 @@
 **Behavioral specification:**
 - `abstract type AbstractLoss end`
 - `GaussianNLL <: AbstractLoss` — default; Gaussian negative log-likelihood:
-  - If `Σ` is `nothing`: `NLL = 0.5 * sum((A_pred - μ)² / σ²) + 0.5 * sum(log(2π * σ²))`
+  - If `Σ` is `nothing`: `NLL = 0.5 * sum((A_pred - μ)² / σ²) + 0.5 * sum(log(2π * σ²))`, computed in one column-major pass (times fastest, then variables) with no temporary arrays; the accumulator follows `A_pred`'s element type, so ForwardDiff `Dual`s pass through. `A_pred` must have the same size as the data's per-condition `[n_times × n_variables]` block — a mismatch throws `DimensionMismatch`.
   - If `Σ` is supplied: uses the full multivariate Gaussian NLL
 - `CustomLoss{F} <: AbstractLoss` — user-supplied loss:
   - `fn::F` — called as `fn(A_pred, data_slice::AbstractCMDataSlice, condition_idx) -> Float64`
@@ -112,6 +114,7 @@
 
 **Acceptance criteria:**
 - `_computeLoss(GaussianNLL(), A_pred, slice, 1)` returns a scalar, where `slice = _sliceCmParamSet(data, 1)`.
+- On a `CMDataSlice` without covariance it is type-stable and allocation-free.
 - `CustomLoss(fn)` where `fn` returns a scalar integrates transparently with `fitSurrogate`.
 
 **Ruled out:**
@@ -219,12 +222,14 @@
   - `profiles::Vector{ProfileCurve{T}}`
   - `fit_result::SMFitResult{T}`
   - `times::Vector{T}`
+  - `method::ProfileLikelihood` — the settings `quantifyUncertainty` was called with, so a result records what produced it (downstream, SmoreFit's posterior reads both the data-side and the CM-side profile settings from here). It is required, so a result assembled by hand passes its settings too.
 
 **Acceptance criteria:**
 - For a well-identified parameter, `ci_lower < fitted_value < ci_upper`.
 - For an unidentifiable parameter (flat likelihood), `ci_lower` and/or `ci_upper` is `nothing`.
 - The MLE value is always a grid point; its profile LL matches `reference_ll` to optimizer tolerance.
 - `quantifyUncertainty(method, problem, fitResult)` (no index) returns one `ProfileLikelihoodResult` per cm_param_set in `problem.data`, in order.
+- Every returned result has `result.method === method`.
 - `quantifyUncertainty(method, problem, fitResult, i)` equals the `i`-th entry of the all-cm_param_sets call.
 - `quantifyUncertainty(method, problem)` (no `fitResult`) equals `quantifyUncertainty(method, problem, fitSurrogate(problem))`; likewise for the `cm_param_set_index` and `cm_param_set_indices` no-`fitResult` overloads against their `fitResult`-taking counterparts.
 
@@ -262,6 +267,10 @@
 - `GridCMSample(params)` / `ScatteredCMSample(params)` without `names` auto-generate `"cm_1", ..., "cm_n"`.
 - `GridCMSample(params; names=["cm_a","cm_b"])` stores the supplied names; length must match `size(params, 2)`.
 - `CMSample(params; names=...)` threads `names` through to whichever concrete type it constructs.
+
+**CI bound interpolation (internal, used by SmoreFit and SmoreGSA):**
+- `_buildBoundsInterpolant(layout, lb_table, ub_table, method::AbstractCIInterpolator) -> get_bounds`, where `get_bounds(θ_CM) -> (lb, ub)`. Implemented for `GridCMSample + LinearCIInterp` (n-linear); other combinations error.
+- For that combination `get_bounds` is a `CIBoundsInterpolant <: Function`: a named callable holding the per-SM-parameter interpolants, so results that store it (SmoreFit's `CMPosteriorResult`) save and load with JLD2 under a stable type name.
 - `GridCMSample([1.0, 2.0], [0.1, 0.2])` matches `GridCMSample([1.0 0.1; 1.0 0.2; 2.0 0.1; 2.0 0.2])`: the same `axes`, default `names`, and set of rows. The row order differs, because the axes constructor varies the first axis fastest.
 - A vector with a repeated value (e.g. `[1.0, 1.0, 2.0]`) throws `ArgumentError`.
 - `GridCMSample()` (no axis vectors) throws `ArgumentError`.
